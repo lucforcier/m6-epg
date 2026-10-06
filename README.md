@@ -5,6 +5,7 @@ Service Go permanent qui récupère le programme de M6 depuis les données M6 PR
 ## État
 
 La première version fonctionnelle est maintenant validée :
+
 - scraper M6 PRO par semaines samedi-vendredi ;
 - stockage SQLite ;
 - couverture future configurable, 21 jours par défaut ;
@@ -18,9 +19,18 @@ La première version fonctionnelle est maintenant validée :
 
 Voir [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) pour l'historique des travaux et les validations.
 
+## Développement assisté par IA
+
+Ce projet a été développé avec une assistance substantielle de **ChatGPT d'OpenAI**.
+
+Les détails de cette utilisation, les responsabilités du mainteneur et les principales considérations relatives aux droits, licences, données et services tiers sont documentés dans [`docs/AI-DEVELOPMENT-NOTICE.md`](docs/AI-DEVELOPMENT-NOTICE.md).
+
+Cette mention est une mesure de transparence. OpenAI n'est ni l'auteur, ni le mainteneur, ni le distributeur du projet.
+
 ## Configuration actuelle
 
 Variables d'environnement principales :
+
 - `DB_PATH` : base SQLite, par défaut `/data/m6.db` ;
 - `GUIDE_PATH` : XMLTV publié, par défaut `/data/m6.xmltv` ;
 - `COVERAGE_DAYS` : couverture source, par défaut `21` ;
