@@ -1,0 +1,15 @@
+services:
+  m6-epg:
+    build: .
+    environment:
+      SCRAPE_TIME: "03:00"
+      TIMEZONE: "Europe/Paris"
+      DAYS: "14"
+      LISTEN_ADDR: "0.0.0.0:8080"
+      DATABASE: "/data/m6-epg.db"
+      EPG_FILE: "/data/m6.xml"
+    volumes:
+      - ./data:/data
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
