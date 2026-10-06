@@ -20,10 +20,10 @@ func TestEnsureCoverageFetchesOnlyMissingWeeks(t *testing.T) {
 
 	seedWeek := func(year, week int) []m6pro.Programme {
 		return []m6pro.Programme{{
-			ProgramID: "seed-" + string(rune('0'+week)),
+			ProgramID:   "seed-" + string(rune('0'+week)),
 			BroadcastID: "b",
-			Start: time.Date(year, 10, 10, 12, 0, 0, 0, time.UTC),
-			Title: "seed",
+			Start:       time.Date(year, 10, 10, 12, 0, 0, 0, time.UTC),
+			Title:       "seed",
 		}}
 	}
 	if err := store.ReplaceWeek(2026, 41, seedWeek(2026, 41)); err != nil {
@@ -34,10 +34,10 @@ func TestEnsureCoverageFetchesOnlyMissingWeeks(t *testing.T) {
 	fetch := func(ctx context.Context, client *http.Client, location *time.Location, year, week int) ([]m6pro.Programme, error) {
 		fetched = append(fetched, m6pro.WeekRef{Year: year, Number: week})
 		return []m6pro.Programme{{
-			ProgramID: "p-" + string(rune('0'+week)),
+			ProgramID:   "p-" + string(rune('0'+week)),
 			BroadcastID: "b",
-			Start: time.Date(year, 10, 10, 12, 0, 0, 0, time.UTC),
-			Title: "programme",
+			Start:       time.Date(year, 10, 10, 12, 0, 0, 0, time.UTC),
+			Title:       "programme",
 		}}, nil
 	}
 
@@ -60,5 +60,54 @@ func TestEnsureCoverageFetchesOnlyMissingWeeks(t *testing.T) {
 	}
 	if len(fetched) != 0 {
 		t.Fatalf("fetched %d weeks on second run, want 0", len(fetched))
+	}
+}
+
+func TestRefreshCoverageRefetchesExistingWeeks(t *testing.T) {
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "m6.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	seed := []m6pro.Programme{{
+		ProgramID:   "old",
+		BroadcastID: "b",
+		Start:       time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC),
+		Title:       "old",
+	}}
+	if err := store.ReplaceWeek(2026, 41, seed); err != nil {
+		t.Fatal(err)
+	}
+
+	var fetched []m6pro.WeekRef
+	fetch := func(ctx context.Context, client *http.Client, location *time.Location, year, week int) ([]m6pro.Programme, error) {
+		fetched = append(fetched, m6pro.WeekRef{Year: year, Number: week})
+		return []m6pro.Programme{{
+			ProgramID:   "new",
+			BroadcastID: "b",
+			Start:       time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC),
+			Title:       "new",
+		}}, nil
+	}
+
+	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	if err := RefreshCoverage(context.Background(), store, nil, time.UTC, now, 0, fetch); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(fetched) != 1 || fetched[0] != (m6pro.WeekRef{Year: 2026, Number: 41}) {
+		t.Fatalf("fetched weeks = %#v, want 2026-41", fetched)
+	}
+
+	programmes, err := store.ProgramsBetween(
+		time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(programmes) != 1 || programmes[0].Title != "new" {
+		t.Fatalf("stored programmes = %#v, want refreshed programme", programmes)
 	}
 }
