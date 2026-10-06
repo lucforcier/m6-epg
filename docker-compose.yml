@@ -3,6 +3,8 @@ services:
     image: ghcr.io/lucforcier/m6-epg:latest
     build:
       context: .
+      network: host
+    network_mode: host
     environment:
       DB_PATH: ${DB_PATH:-/data/m6.db}
       GUIDE_PATH: ${GUIDE_PATH:-/data/m6.xmltv}
@@ -14,8 +16,6 @@ services:
       SCHEDULE_LOCATION: ${SCHEDULE_LOCATION:-America/Toronto}
     volumes:
       - m6-data:/data
-    ports:
-      - "${HOST_PORT:-8081}:8080"
     restart: unless-stopped
 
 volumes:

@@ -8,6 +8,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /m6-epg ./cmd/m6-epg
 
 FROM alpine:3.22
 
+RUN apk add --no-cache tzdata
+
 RUN addgroup -S m6epg && adduser -S -G m6epg m6epg
 COPY --from=build /m6-epg /m6-epg
 
