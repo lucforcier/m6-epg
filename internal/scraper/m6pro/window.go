@@ -56,12 +56,11 @@ func m6WeekStart(t time.Time) time.Time {
 func m6WeekRef(start time.Time) (int, int) {
 	start = m6WeekStart(start)
 
-	year := start.Year()
+	// An M6 week is named for the calendar year containing its Friday.
+	// This makes the week starting Saturday 2025-12-27 the first week
+	// of 2026 because it contains January 1, 2026.
+	year := start.AddDate(0, 0, 6).Year()
 	first := m6WeekStart(time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC))
-	if start.Before(first) {
-		year--
-		first = m6WeekStart(time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC))
-	}
 
 	weeks := int(start.Sub(first).Hours() / (24 * 7))
 	return year, weeks + 1
