@@ -73,14 +73,18 @@ type Broadcast struct {
 	Synopsis string `xml:"resume"`
 }
 
-type rawBool string
+type rawBool struct {
+	Value string
+	Set   bool
+}
 
 func (b *rawBool) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	var v string
 	if err := d.DecodeElement(&v, &start); err != nil {
 		return err
 	}
-	*b = rawBool(strings.TrimSpace(v))
+	b.Value = strings.TrimSpace(v)
+	b.Set = true
 	return nil
 }
 
@@ -106,7 +110,19 @@ func (s *Signage) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	return nil
 }
 
-func present(v rawBool) bool { return strings.TrimSpace(string(v)) != "" }
+func present(v rawBool) bool {
+	if !v.Set {
+		return false
+	}
+	switch strings.ToLower(v.Value) {
+	case "", "1", "true", "yes", "oui":
+		return true
+	case "0", "false", "no", "non":
+		return false
+	default:
+		return true
+	}
+}
 
 func Parse(r io.Reader, location *time.Location) ([]Programme, error) {
 	if location == nil {
