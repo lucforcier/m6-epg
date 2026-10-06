@@ -96,3 +96,14 @@ La prochaine étape est la conteneurisation :
 7. test du cycle complet dans le conteneur.
 
 L'enrichissement externe est explicitement laissé de côté pour le moment.
+## Correction des horaires et des rediffusions
+
+Une anomalie importante a été identifiée et corrigée lors de la validation en production. M6 PRO fournit `<dateheure>` comme heure de grille. Cette valeur ne doit pas être traitée comme un timestamp absolu en `Europe/Paris` avant conversion vers le fuseau québécois.
+
+Exemple validé : M6 PRO indiquait `2026-10-07 17:25` pour **La roue de la fortune**. Une ancienne interprétation produisait `11:25 -0400`. Après correction, le XMLTV produit bien une diffusion à `17:25 -0400`, conforme à la diffusion observée au Québec.
+
+Le parseur utilise désormais `time.ParseInLocation` avec le fuseau de sortie afin de préserver l'heure de grille. Un test dédié vérifie cette sémantique.
+
+Les rediffusions sont également traitées occurrence par occurrence. Si M6 PRO fournit une rediffusion à une autre heure, cette heure est conservée telle quelle. Le programme ne doit pas hériter de l'heure de sa première diffusion et aucun décalage fixe ne doit être appliqué selon qu'il s'agit d'une rediffusion.
+
+Enfin, le refresh quotidien re-télécharge maintenant les semaines nécessaires même lorsqu'elles existent déjà en SQLite. Cela permet aux corrections de parsing et aux changements de programmation de remplacer les données persistées lors du cycle nocturne. Au démarrage, seules les semaines manquantes sont récupérées afin d'éviter un téléchargement inutile.
