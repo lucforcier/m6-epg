@@ -10,7 +10,7 @@ La première version fonctionnelle est maintenant validée :
 - stockage SQLite ;
 - couverture future configurable, 21 jours par défaut ;
 - guide XMLTV de 14 jours ;
-- conversion Europe/Paris → America/Toronto ;
+- interprétation de l'heure de grille M6 PRO dans le fuseau de sortie ;
 - publication atomique du guide ;
 - HTTP `/epg.xml` et `/healthz` ;
 - refresh quotidien configurable avec `REFRESH_TIME` ;
@@ -18,6 +18,82 @@ La première version fonctionnelle est maintenant validée :
 - processus permanent 24 h/24.
 
 Voir [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) pour l'historique des travaux et les validations.
+
+## Développement assisté par IA
+
+Ce projet a été développé avec une assistance substantielle de **ChatGPT d'OpenAI**.
+
+Les détails de cette utilisation, les responsabilités du mainteneur et les principales considérations relatives aux droits, licences, données et services tiers sont documentés dans [`docs/AI-DEVELOPMENT-NOTICE.md`](docs/AI-DEVELOPMENT-NOTICE.md).
+
+Cette mention est une mesure de transparence. OpenAI n'est ni l'auteur, ni le mainteneur, ni le distributeur du projet.
+
+## Configuration actuelle
+
+Variables d'environnement principales :
+
+- `DB_PATH` : base SQLite, par défaut `/data/m6.db` ;
+- `GUIDE_PATH` : XMLTV publié, par défaut `/data/m6.xmltv` ;
+- `COVERAGE_DAYS` : couverture source, par défaut `21` ;
+- `M6_LOCATION` : fuseau source, par défaut `Europe/Paris` ;
+- `OUTPUT_LOCATION` : fuseau XMLTV, par défaut `America/Toronto` ;
+- `HTTP_ADDR` : adresse HTTP, par défaut `0.0.0.0:8080` ;
+- `REFRESH_TIME` : heure quotidienne du refresh, par défaut `03:00` ;
+- `SCHEDULE_LOCATION` : fuseau du scheduler, par défaut `America/Toronto`.
+
+## HTTP
+
+- `GET /epg.xml` — dernier guide XMLTV valide ;
+- `HEAD /epg.xml` — vérification du guide ;
+- `GET /healthz` — retourne `ok`.
+
+Le endpoint XMLTV ne déclenche pas de scraping.
+
+## Enrichissement
+
+L'enrichissement externe des métadonnées est volontairement hors périmètre pour le moment. Des pistes comme TMDB, TVmaze et Wikidata ont été étudiées mais ne sont pas nécessaires à la première version.
+
+## Docker
+
+Une image publique est publiée automatiquement vers GitHub Container Registry à chaque modification de `main`.
+
+Image :
+
+`ghcr.io/lucforcier/m6-epg:latest`
+
+Le déploiement recommandé utilise un répertoire hôte persistant pour `/data` :
+
+```yaml
+services:
+  m6-epg:
+    image: ghcr.io/lucforcier/m6-epg:latest
+    ports:
+      - "18083:8080"
+    environment:
+      TZ: America/Toronto
+      REFRESH_TIME: "03:00"
+      SCHEDULE_LOCATION: America/Toronto
+    volumes:
+      - /raid/portainer/iptv/m6-epg:/data
+    restart: unless-stopped
+```
+
+Le conteneur écoute sur le port `8080`. Le port hôte `18083` est utilisé dans l'exemple ci-dessus et peut être adapté au serveur.
+
+Le répertoire `/raid/portainer/iptv/m6-epg` conserve la base SQLite et le guide XMLTV lorsque le conteneur est recréé.
+
+Endpoints de l'exemple :
+
+- `http://<serveur>:18083/epg.xml`
+- `http://<serveur>:18083/healthz`
+
+Le fichier `.env.example` contient uniquement les variables utiles à l'application. Le montage du volume et le port publié sont définis dans `docker-compose.yml`.
+
+Après une modification publiée sur `main` :
+
+```bash
+docker compose pull
+docker compose up -d --force-recreate
+```
 
 ## Développement assisté par IA
 
@@ -111,10 +187,6 @@ go test ./...
 go vet ./...
 go build -o m6-epg ./cmd/m6-epg
 ```
-
-## Prochaine étape
-
-La prochaine étape est la création de l'image Docker publique et de la configuration Compose avec stockage persistant dans `/data`.
 
 ## Gestion des horaires M6 PRO et des rediffusions
 
