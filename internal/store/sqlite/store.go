@@ -159,6 +159,15 @@ func boolInt(v bool) int {
 	return 0
 }
 
+// HasWeek reports whether an M6 week has been fetched successfully.
+func (s *Store) HasWeek(year, week int) (bool, error) {
+	var n int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM sources WHERE year = ? AND week = ?", year, week).Scan(&n); err != nil {
+		return false, fmt.Errorf("check source week: %w", err)
+	}
+	return n > 0, nil
+}
+
 // LatestSourceWeek returns the most recently fetched M6 week.
 func (s *Store) LatestSourceWeek() (year, week int, ok bool, err error) {
 	err = s.db.QueryRow(`SELECT year, week FROM sources ORDER BY year DESC, week DESC LIMIT 1`).Scan(&year, &week)
