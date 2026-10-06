@@ -138,6 +138,7 @@ func Parse(r io.Reader, location *time.Location) ([]Programme, error) {
 	var programmes []Programme
 	for _, day := range doc.Grille.Week.Days {
 		for _, b := range day.Broadcasts {
+			// M6 PRO's dateheure is a grid wall-clock time, not an absolute timestamp to convert from the source timezone.
 			start, err := time.ParseInLocation("2006-01-02 15:04", strings.TrimSpace(b.DateTime), location)
 			if err != nil {
 				return nil, fmt.Errorf("parse broadcast %q: %w", b.DateTime, err)
