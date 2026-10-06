@@ -18,13 +18,15 @@ func TestEnsureCoverageFetchesOnlyMissingWeeks(t *testing.T) {
 	}
 	defer store.Close()
 
-	loc := time.UTC
-	seed := func(ctx context.Context, client *http.Client, location *time.Location, year, week int) ([]m6pro.Programme, error) {
+	seedWeek := func(year, week int) []m6pro.Programme {
 		return []m6pro.Programme{{
-			ProgramID: "seed", BroadcastID: "b", Start: time.Date(year, 10, 1, 12, 0, 0, 0, time.UTC), Title: "seed",
-		}}, nil
+			ProgramID: "seed-" + string(rune('0'+week)),
+			BroadcastID: "b",
+			Start: time.Date(year, 10, 10, 12, 0, 0, 0, time.UTC),
+			Title: "seed",
+		}}
 	}
-	if err := EnsureCoverage(context.Background(), store, nil, loc, time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC), 14*24*time.Hour, seed); err != nil {
+	if err := store.ReplaceWeek(2026, 41, seedWeek(2026, 41)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -32,10 +34,28 @@ func TestEnsureCoverageFetchesOnlyMissingWeeks(t *testing.T) {
 	fetch := func(ctx context.Context, client *http.Client, location *time.Location, year, week int) ([]m6pro.Programme, error) {
 		fetched = append(fetched, m6pro.WeekRef{Year: year, Number: week})
 		return []m6pro.Programme{{
-			ProgramID: "p", BroadcastID: string(rune('0' + week)), Start: time.Date(year, 10, 1, 12, 0, 0, 0, time.UTC), Title: "programme",
+			ProgramID: "p-" + string(rune('0'+week)),
+			BroadcastID: "b",
+			Start: time.Date(year, 10, 10, 12, 0, 0, 0, time.UTC),
+			Title: "programme",
 		}}, nil
 	}
-	if err := EnsureCoverage(context.Background(), store, nil, loc, time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC), 14*24*time.Hour, fetch); err != nil {
+
+	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	if err := EnsureCoverage(context.Background(), store, nil, time.UTC, now, 14*24*time.Hour, fetch); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(fetched) != 2 {
+		t.Fatalf("fetched %d weeks, want 2", len(fetched))
+	}
+	if fetched[0] != (m6pro.WeekRef{Year: 2026, Number: 42}) ||
+		fetched[1] != (m6pro.WeekRef{Year: 2026, Number: 43}) {
+		t.Fatalf("fetched weeks = %#v, want 2026-42 and 2026-43", fetched)
+	}
+
+	fetched = nil
+	if err := EnsureCoverage(context.Background(), store, nil, time.UTC, now, 14*24*time.Hour, fetch); err != nil {
 		t.Fatal(err)
 	}
 	if len(fetched) != 0 {
