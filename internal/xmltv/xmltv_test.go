@@ -38,10 +38,13 @@ func TestWriteUsesOutputLocationAndAtomicReplacement(t *testing.T) {
 			Season:   "7",
 			Episode:  "7",
 			Synopsis: "A test & description.",
+			Photo:    "https://images.example/m6.jpg",
+			CastJSON: `[{"Type":"Animateur / présentateur","Name":"Éric Antoine","Role":""}]`,
 		},
 		{
 			Start: start.Add(45 * time.Minute),
-			Title: "Next",
+			Title: "Programmes de nuit",
+			CastJSON: "null",
 		},
 	}
 	if err := Write(path, start, start.Add(24*time.Hour), loc, programmes); err != nil {
@@ -62,6 +65,12 @@ func TestWriteUsesOutputLocationAndAtomicReplacement(t *testing.T) {
 	if !strings.Contains(text, `<episode-num system="xmltv_ns">6.6.</episode-num>`) {
 		t.Fatalf("missing zero-based episode number in %s", text)
 	}
+	if !strings.Contains(text, `<icon src="https://images.example/m6.jpg"></icon>`) {
+		t.Fatalf("missing programme icon in %s", text)
+	}
+	if !strings.Contains(text, `<credits><presenter>Éric Antoine</presenter></credits>`) {
+		t.Fatalf("missing presenter credit in %s", text)
+	}
 	if !strings.Contains(text, "9-1-1 &amp; Friends") || !strings.Contains(text, "A test &amp; description.") {
 		t.Fatalf("XML escaping missing in %s", text)
 	}
@@ -73,5 +82,19 @@ func TestWriteUsesOutputLocationAndAtomicReplacement(t *testing.T) {
 	}
 	if err := xml.Unmarshal(data, &doc); err != nil {
 		t.Fatalf("generated XML is invalid: %v", err)
+	}
+}
+
+
+func TestPresentersFromJSON(t *testing.T) {
+	got, err := presentersFromJSON(`[
+		{"Type":"Animateur / présentateur","Name":"Éric Antoine","Role":""},
+		{"Type":"Autre","Name":"Ignored","Role":""}
+	]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "Éric Antoine" {
+		t.Fatalf("presentersFromJSON() = %#v; want [Éric Antoine]", got)
 	}
 }
