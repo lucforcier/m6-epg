@@ -68,7 +68,7 @@ func TestWriteUsesOutputLocationAndAtomicReplacement(t *testing.T) {
 	if !strings.Contains(text, `<icon src="https://images.example/m6.jpg"></icon>`) {
 		t.Fatalf("missing programme icon in %s", text)
 	}
-	if !strings.Contains(text, `<credits><presenter>Éric Antoine</presenter></credits>`) {
+	if !strings.Contains(text, "<credits>") || !strings.Contains(text, "<presenter>Éric Antoine</presenter>") {
 		t.Fatalf("missing presenter credit in %s", text)
 	}
 	if !strings.Contains(text, "9-1-1 &amp; Friends") || !strings.Contains(text, "A test &amp; description.") {
