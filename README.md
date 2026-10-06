@@ -115,3 +115,45 @@ go build -o m6-epg ./cmd/m6-epg
 ## Prochaine étape
 
 La prochaine étape est la création de l'image Docker publique et de la configuration Compose avec stockage persistant dans `/data`.
+
+## Gestion des horaires M6 PRO et des rediffusions
+
+### Heure de grille, pas conversion de fuseau
+
+Le champ M6 PRO `<dateheure>` représente l'heure de la grille de diffusion à utiliser pour M6-EPG. Il ne doit pas être interprété comme un instant absolu situé en `Europe/Paris` puis converti vers `America/Toronto`.
+
+Autrement dit, pour la grille :
+
+```
+M6 PRO : 2026-10-07 17:25
+        ↓
+XMLTV : 2026-10-07 17:25 America/Toronto
+        ↓
+UTC    : 2026-10-07 21:25Z (en période EDT)
+```
+
+Cette distinction est importante pour la distribution québécoise. Une ancienne interprétation produisait par exemple `11:25 -0400` à partir de `17:25`, soit un décalage de six heures qui ne correspondait pas à la diffusion observée.
+
+Le parseur utilise donc `time.ParseInLocation` avec le fuseau de sortie pour préserver l'heure de grille. Le test associé vérifie explicitement cette sémantique.
+
+### Rediffusions et décalages de programmation
+
+Une rediffusion ne doit pas être reconstruite à partir de l'heure de la première diffusion ni corrigée avec un décalage fixe. Chaque occurrence du XML M6 PRO est traitée comme une occurrence de grille indépendante : sa propre valeur `<dateheure>` détermine son heure de diffusion.
+
+Ainsi, si M6 PRO place une rediffusion à une heure différente, cette heure différente est conservée. Le fait qu'il s'agisse du même programme ne doit jamais amener le générateur à réutiliser l'heure d'une autre occurrence.
+
+La correction de fuseau et la gestion des rediffusions sont donc deux sujets distincts :
+
+- **fuseau** : préserver l'heure de grille M6 PRO lors de la normalisation ;
+- **rediffusion** : conserver l'heure propre à chaque occurrence fournie par M6 PRO.
+
+### Persistance et correction des anciennes données
+
+Le service utilise SQLite comme cache persistant. Une correction du parseur ne corrige donc pas rétroactivement des semaines déjà présentes si elles ne sont jamais re-téléchargées.
+
+Le fonctionnement est maintenant séparé en deux modes :
+
+- au démarrage, seules les semaines manquantes sont récupérées ;
+- lors du refresh quotidien, les semaines nécessaires sont re-téléchargées et remplacées dans SQLite, même si elles existent déjà.
+
+Cette seconde règle garantit notamment qu'une correction de parsing ou de sémantique horaire finisse par être appliquée aux données persistées sans devoir supprimer manuellement la base.
