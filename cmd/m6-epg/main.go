@@ -17,18 +17,24 @@ const (
 	defaultDBPath      = "/data/m6.db"
 	defaultGuidePath   = "/data/m6.xmltv"
 	defaultCoverageDay = 21
-	defaultLocation    = "Europe/Paris"
+	defaultLocation       = "Europe/Paris"
+	defaultOutputLocation = "America/Toronto"
 )
 
 func main() {
 	dbPath := envString("DB_PATH", defaultDBPath)
 	guidePath := envString("GUIDE_PATH", defaultGuidePath)
 	locationName := envString("M6_LOCATION", defaultLocation)
+	outputLocationName := envString("OUTPUT_LOCATION", defaultOutputLocation)
 	coverageDays := envInt("COVERAGE_DAYS", defaultCoverageDay)
 
 	location, err := time.LoadLocation(locationName)
 	if err != nil {
 		log.Fatalf("load location %q: %v", locationName, err)
+	}
+	outputLocation, err := time.LoadLocation(outputLocationName)
+	if err != nil {
+		log.Fatalf("load output location %q: %v", outputLocationName, err)
 	}
 
 	store, err := sqlite.Open(dbPath)
@@ -37,7 +43,7 @@ func main() {
 	}
 	defer store.Close()
 
-	log.Printf("m6-epg: database=%s guide=%s coverage=%dd location=%s", dbPath, guidePath, coverageDays, locationName)
+	log.Printf("m6-epg: database=%s guide=%s coverage=%dd location=%s output=%s", dbPath, guidePath, coverageDays, locationName, outputLocationName)
 
 	now := time.Now().In(location)
 	if err := coverage.EnsureCoverage(
@@ -56,7 +62,7 @@ func main() {
 	guideEnd := now.Add(14 * 24 * time.Hour)
 	programmes, err := store.ProgramsBetween(guideStart, guideEnd)
 	if err != nil { log.Fatalf("query guide programmes: %v", err) }
-	if err := xmltv.Write(guidePath, guideStart, guideEnd, programmes); err != nil { log.Fatalf("write XMLTV: %v", err) }
+	if err := xmltv.Write(guidePath, guideStart, guideEnd, outputLocation, programmes); err != nil { log.Fatalf("write XMLTV: %v", err) }
 	log.Printf("m6-epg: XMLTV written to %s programmes=%d", guidePath, len(programmes))
 
 	count, err := store.Count()
