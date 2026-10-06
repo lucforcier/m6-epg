@@ -58,7 +58,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := refresh(ctx, store, http.DefaultClient, outputLocation, guidePath, coverageDays); err != nil {
+	if err := refresh(ctx, store, http.DefaultClient, outputLocation, guidePath, coverageDays, false); err != nil {
 		if ctx.Err() != nil {
 			return
 		}
@@ -127,9 +127,13 @@ func main() {
 	}
 }
 
-func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, location *time.Location, guidePath string, coverageDays int) error {
+func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, location *time.Location, guidePath string, coverageDays int, refreshExisting bool) error {
 	now := time.Now().In(location)
-	if err := coverage.EnsureCoverage(
+	coverageRefresh := coverage.EnsureCoverage
+	if refreshExisting {
+		coverageRefresh = coverage.RefreshCoverage
+	}
+	if err := coverageRefresh(
 		ctx,
 		store,
 		client,
@@ -187,7 +191,7 @@ func runScheduler(ctx context.Context, store *sqlite.Store, client *http.Client,
 		}
 
 		log.Printf("m6-epg: scheduled refresh starting")
-		if err := refresh(ctx, store, client, location, guidePath, coverageDays); err != nil {
+		if err := refresh(ctx, store, client, location, guidePath, coverageDays, true); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
