@@ -1,8 +1,3 @@
-type WeekRef struct {
-	Year int
-	Number int
-}
-
 package m6pro
 
 import (
@@ -12,13 +7,18 @@ import (
 	"time"
 )
 
+type WeekRef struct {
+	Year   int
+	Number int
+}
+
 func WeeksForRange(start, end time.Time) []WeekRef {
 	start, end = start.UTC(), end.UTC()
 	if end.Before(start) {
 		return nil
 	}
 	first, last := monday(start), monday(end)
-	var weeks []Week
+	var weeks []WeekRef
 	for d := first; !d.After(last); d = d.AddDate(0, 0, 7) {
 		y, w := d.ISOWeek()
 		weeks = append(weeks, WeekRef{Year: y, Number: w})
@@ -30,7 +30,7 @@ func FetchRange(ctx context.Context, client *http.Client, location *time.Locatio
 	if location == nil {
 		return nil, fmt.Errorf("location is required")
 	}
-	result := make(map[Week][]Programme)
+	result := make(map[WeekRef][]Programme)
 	for _, week := range WeeksForRange(start, end) {
 		programmes, err := FetchWeek(ctx, client, location, week.Year, week.Number)
 		if err != nil {
