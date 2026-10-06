@@ -159,13 +159,29 @@ func boolInt(v bool) int {
 	return 0
 }
 
-func weekStart(year, week int) string {
-	return isoWeekStart(year, week).Format(time.RFC3339)
+// LatestSourceWeek returns the most recently fetched M6 week.
+func (s *Store) LatestSourceWeek() (year, week int, ok bool, err error) {
+	err = s.db.QueryRow(`SELECT year, week FROM sources ORDER BY year DESC, week DESC LIMIT 1`).Scan(&year, &week)
+	if err == sql.ErrNoRows {
+		return 0, 0, false, nil
+	}
+	if err != nil {
+		return 0, 0, false, fmt.Errorf("find latest source week: %w", err)
+	}
+	return year, week, true, nil
 }
 
-func isoWeekStart(year, week int) time.Time {
-	jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, time.UTC)
-	weekday := int(jan4.Weekday())
-	if weekday == 0 { weekday = 7 }
-	return jan4.AddDate(0, 0, (week-1)*7-(weekday-1))
+func weekStart(year, week int) string {
+	return m6WeekStart(year, week).Format(time.RFC3339)
+}
+
+func m6WeekStart(year, week int) time.Time {
+	first := saturdayOnOrBefore(time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC))
+	return first.AddDate(0, 0, (week-1)*7)
+}
+
+func saturdayOnOrBefore(t time.Time) time.Time {
+	weekday := int(t.Weekday())
+	daysSinceSaturday := (weekday - 6 + 7) % 7
+	return t.AddDate(0, 0, -daysSinceSaturday)
 }
