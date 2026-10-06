@@ -1,15 +1,22 @@
 services:
   m6-epg:
-    build: .
+    image: ghcr.io/lucforcier/m6-epg:latest
+    build:
+      context: .
     environment:
-      SCRAPE_TIME: "03:00"
-      TIMEZONE: "Europe/Paris"
-      DAYS: "14"
-      LISTEN_ADDR: "0.0.0.0:8080"
-      DATABASE: "/data/m6-epg.db"
-      EPG_FILE: "/data/m6.xml"
+      DB_PATH: ${DB_PATH:-/data/m6.db}
+      GUIDE_PATH: ${GUIDE_PATH:-/data/m6.xmltv}
+      COVERAGE_DAYS: ${COVERAGE_DAYS:-21}
+      M6_LOCATION: ${M6_LOCATION:-Europe/Paris}
+      OUTPUT_LOCATION: ${OUTPUT_LOCATION:-America/Toronto}
+      HTTP_ADDR: ${HTTP_ADDR:-0.0.0.0:8080}
+      REFRESH_TIME: ${REFRESH_TIME:-03:00}
+      SCHEDULE_LOCATION: ${SCHEDULE_LOCATION:-America/Toronto}
     volumes:
-      - ./data:/data
+      - m6-data:/data
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8081}:8080"
     restart: unless-stopped
+
+volumes:
+  m6-data:
