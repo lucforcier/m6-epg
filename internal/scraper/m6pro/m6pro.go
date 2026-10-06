@@ -28,7 +28,9 @@ type Signage struct {
 }
 
 type CastMember struct {
-	Type, Name, Role string
+	Type string `xml:"type"`
+	Name string `xml:"nom"`
+	Role string `xml:"role"`
 }
 
 type grille struct {
