@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/lucforcier/m6-epg/internal/coverage"
@@ -20,6 +23,8 @@ const (
 	defaultLocation       = "Europe/Paris"
 	defaultOutputLocation = "America/Toronto"
 	defaultHTTPAddr       = "0.0.0.0:8080"
+	defaultRefreshTime    = "03:00"
+	defaultScheduleLoc    = "America/Toronto"
 )
 
 func main() {
@@ -29,6 +34,8 @@ func main() {
 	outputLocationName := envString("OUTPUT_LOCATION", defaultOutputLocation)
 	coverageDays := envInt("COVERAGE_DAYS", defaultCoverageDay)
 	httpAddr := envString("HTTP_ADDR", defaultHTTPAddr)
+	refreshTime := envString("REFRESH_TIME", defaultRefreshTime)
+	scheduleLocationName := envString("SCHEDULE_LOCATION", defaultScheduleLoc)
 
 	location, err := time.LoadLocation(locationName)
 	if err != nil {
@@ -38,6 +45,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("load output location %q: %v", outputLocationName, err)
 	}
+	scheduleLocation, err := time.LoadLocation(scheduleLocationName)
+	if err != nil {
+		log.Fatalf("load schedule location %q: %v", scheduleLocationName, err)
+	}
+	if _, _, err := parseRefreshTime(refreshTime); err != nil {
+		log.Fatal(err)
+	}
 
 	store, err := sqlite.Open(dbPath)
 	if err != nil {
@@ -45,38 +59,16 @@ func main() {
 	}
 	defer store.Close()
 
-	log.Printf("m6-epg: database=%s guide=%s coverage=%dd location=%s output=%s", dbPath, guidePath, coverageDays, locationName, outputLocationName)
+	log.Printf("m6-epg: database=%s guide=%s coverage=%dd location=%s output=%s refresh=%s schedule=%s", dbPath, guidePath, coverageDays, locationName, outputLocationName, refreshTime, scheduleLocationName)
 
-	now := time.Now().In(location)
-	if err := coverage.EnsureCoverage(
-		context.Background(),
-		store,
-		http.DefaultClient,
-		location,
-		now,
-		time.Duration(coverageDays)*24*time.Hour,
-		nil,
-	); err != nil {
-		log.Fatalf("ensure coverage: %v", err)
-	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	if err := writeGuide(store, guidePath, outputLocation, now); err != nil {
-		log.Fatalf("write XMLTV: %v", err)
-	}
-
-	count, err := store.Count()
-	if err != nil {
-		log.Fatalf("count programmes: %v", err)
-	}
-
-	year, week, ok, err := store.LatestSourceWeek()
-	if err != nil {
-		log.Fatalf("find latest source week: %v", err)
-	}
-	if ok {
-		log.Printf("m6-epg: coverage ready; latest source week=%04d-%02d programmes=%d", year, week, count)
-	} else {
-		log.Printf("m6-epg: coverage ready; no source weeks stored programmes=%d", count)
+	if err := refresh(ctx, store, http.DefaultClient, location, outputLocation, guidePath, coverageDays); err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		log.Fatalf("initial refresh: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -98,10 +90,135 @@ func main() {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 
-	log.Printf("m6-epg: HTTP listening on %s", httpAddr)
-	if err := http.ListenAndServe(httpAddr, mux); err != nil {
-		log.Fatalf("HTTP server: %v", err)
+	server := &http.Server{
+		Addr:    httpAddr,
+		Handler: mux,
 	}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Printf("m6-epg: HTTP listening on %s", httpAddr)
+		serverErr <- server.ListenAndServe()
+	}()
+
+	if err := runScheduler(ctx, store, http.DefaultClient, location, outputLocation, guidePath, coverageDays, refreshTime, scheduleLocation); err != nil && ctx.Err() == nil {
+		log.Printf("m6-epg: scheduler stopped: %v", err)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = server.Shutdown(shutdownCtx)
+
+	select {
+	case err := <-serverErr:
+		if err != nil && err != http.ErrServerClosed {
+			log.Printf("m6-epg: HTTP server: %v", err)
+		}
+	default:
+	}
+}
+
+func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, location, outputLocation *time.Location, guidePath string, coverageDays int) error {
+	now := time.Now().In(location)
+	if err := coverage.EnsureCoverage(
+		ctx,
+		store,
+		client,
+		location,
+		now,
+		time.Duration(coverageDays)*24*time.Hour,
+		nil,
+	); err != nil {
+		return fmt.Errorf("ensure coverage: %w", err)
+	}
+
+	if err := writeGuide(store, guidePath, outputLocation, now); err != nil {
+		return fmt.Errorf("write XMLTV: %w", err)
+	}
+
+	count, err := store.Count()
+	if err != nil {
+		return fmt.Errorf("count programmes: %w", err)
+	}
+
+	year, week, ok, err := store.LatestSourceWeek()
+	if err != nil {
+		return fmt.Errorf("find latest source week: %w", err)
+	}
+	if ok {
+		log.Printf("m6-epg: coverage ready; latest source week=%04d-%02d programmes=%d", year, week, count)
+	} else {
+		log.Printf("m6-epg: coverage ready; no source weeks stored programmes=%d", count)
+	}
+	return nil
+}
+
+func runScheduler(ctx context.Context, store *sqlite.Store, client *http.Client, location, outputLocation *time.Location, guidePath string, coverageDays int, refreshTime string, scheduleLocation *time.Location) error {
+	for {
+		now := time.Now().In(scheduleLocation)
+		next, err := nextRefresh(now, refreshTime)
+		if err != nil {
+			return err
+		}
+
+		wait := time.Until(next)
+		log.Printf("m6-epg: next refresh at %s (in %s)", next.Format(time.RFC3339), wait.Round(time.Second))
+
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return nil
+		case <-timer.C:
+		}
+
+		log.Printf("m6-epg: scheduled refresh starting")
+		if err := refresh(ctx, store, client, location, outputLocation, guidePath, coverageDays); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			log.Printf("m6-epg: scheduled refresh failed: %v", err)
+			continue
+		}
+		log.Printf("m6-epg: scheduled refresh completed")
+	}
+}
+
+func nextRefresh(now time.Time, refreshTime string) (time.Time, error) {
+	hour, minute, err := parseRefreshTime(refreshTime)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	next := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
+	if !next.After(now) {
+		next = next.AddDate(0, 0, 1)
+	}
+	return next, nil
+}
+
+func parseRefreshTime(value string) (int, int, error) {
+	if len(value) != 5 || value[2] != ':' {
+		return 0, 0, fmt.Errorf("invalid refresh time %q: expected HH:MM", value)
+	}
+
+	hour, err := strconv.Atoi(value[:2])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid refresh time %q: expected HH:MM", value)
+	}
+	minute, err := strconv.Atoi(value[3:])
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid refresh time %q: expected HH:MM", value)
+	}
+	if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
+		return 0, 0, fmt.Errorf("invalid refresh time %q: expected HH:MM", value)
+	}
+	return hour, minute, nil
 }
 
 func writeGuide(store *sqlite.Store, guidePath string, outputLocation *time.Location, now time.Time) error {
