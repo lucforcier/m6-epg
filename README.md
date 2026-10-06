@@ -1,58 +1,65 @@
 # m6-epg
 
-Service Go permanent qui récupère le programme de M6 depuis les données M6 PRO, construit un guide XMLTV sur une fenêtre glissante de 14 jours et l'expose par HTTP.
+Service Go permanent qui récupère le programme de M6 depuis les données M6 PRO, maintient une couverture source de 21 jours et expose un guide XMLTV glissant de 14 jours par HTTP.
 
-## Objectif
+## État
 
-Le service doit fonctionner 24 h/24 et maintenir un guide EPG toujours à jour sans intervention manuelle.
+La première version fonctionnelle est maintenant validée :
+- scraper M6 PRO par semaines samedi-vendredi ;
+- stockage SQLite ;
+- couverture future configurable, 21 jours par défaut ;
+- guide XMLTV de 14 jours ;
+- conversion Europe/Paris → America/Toronto ;
+- publication atomique du guide ;
+- HTTP `/epg.xml` et `/healthz` ;
+- refresh quotidien configurable avec `REFRESH_TIME` ;
+- fuseau du scheduler configurable avec `SCHEDULE_LOCATION` ;
+- processus permanent 24 h/24.
 
-À chaque cycle de scraping :
+Voir [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) pour l'historique des travaux et les validations.
 
-1. déterminer la fenêtre `aujourd'hui → aujourd'hui + 14 jours` ;
-2. identifier les semaines M6 PRO nécessaires ;
-3. récupérer et valider les données source ;
-4. mettre à jour le stockage SQLite ;
-5. générer le XMLTV complet ;
-6. valider le XMLTV ;
-7. publier le nouveau guide atomiquement.
+## Configuration actuelle
 
-Un échec de récupération ne doit jamais remplacer le dernier guide valide.
-
-## Configuration prévue
-
-Les paramètres seront fournis par variables d'environnement, notamment :
-
-- `SCRAPE_TIME` : heure locale du scraping quotidien, par exemple `03:00` ;
-- `TIMEZONE` : fuseau utilisé par le scheduler, par exemple `Europe/Paris` ;
-- `DAYS` : taille de la fenêtre glissante, par défaut 14 ;
-- `LISTEN_ADDR` : adresse HTTP, par défaut `0.0.0.0:8080` ;
-- `DATABASE` : chemin SQLite ;
-- `EPG_FILE` : fichier XMLTV publié.
+Variables d'environnement principales :
+- `DB_PATH` : base SQLite, par défaut `/data/m6.db` ;
+- `GUIDE_PATH` : XMLTV publié, par défaut `/data/m6.xmltv` ;
+- `COVERAGE_DAYS` : couverture source, par défaut `21` ;
+- `M6_LOCATION` : fuseau source, par défaut `Europe/Paris` ;
+- `OUTPUT_LOCATION` : fuseau XMLTV, par défaut `America/Toronto` ;
+- `HTTP_ADDR` : adresse HTTP, par défaut `0.0.0.0:8080` ;
+- `REFRESH_TIME` : heure quotidienne du refresh, par défaut `03:00` ;
+- `SCHEDULE_LOCATION` : fuseau du scheduler, par défaut `America/Toronto`.
 
 ## HTTP
 
-Endpoints prévus :
+- `GET /epg.xml` — dernier guide XMLTV valide ;
+- `HEAD /epg.xml` — vérification du guide ;
+- `GET /healthz` — retourne `ok`.
 
-- `GET /epg.xml` — guide XMLTV ;
-- `GET /health` — santé minimale du service ;
-- `GET /status` — état du dernier cycle et prochain cycle.
+Le endpoint XMLTV ne déclenche pas de scraping.
 
-## Architecture
+## Enrichissement
 
-Voir [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+L'enrichissement externe des métadonnées est volontairement hors périmètre pour le moment. Des pistes comme TMDB, TVmaze et Wikidata ont été étudiées mais ne sont pas nécessaires à la première version.
 
 ## Développement
 
-Le projet est volontairement structuré en petits composants indépendants :
-
-```
+```text
 cmd/m6-epg/         entrée du programme
-internal/config/    configuration
-internal/scheduler/ scheduler
+internal/coverage/  couverture des semaines M6 PRO
 internal/scraper/   source M6 PRO
 internal/store/     SQLite
-internal/xmltv/     génération/validation XMLTV
-internal/httpapi/   HTTP
+internal/xmltv/     génération XMLTV
 ```
 
-L'implémentation fonctionnelle du scraper sera ajoutée après consolidation des observations faites sur la source M6 PRO.
+Validation :
+
+```bash
+go test ./...
+go vet ./...
+go build -o m6-epg ./cmd/m6-epg
+```
+
+## Prochaine étape
+
+La prochaine étape est la création de l'image Docker publique et de la configuration Compose avec stockage persistant dans `/data`.
