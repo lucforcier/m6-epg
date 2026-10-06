@@ -27,13 +27,15 @@ func TestParse(t *testing.T) {
 </diffusions></jour></jours>
 </semaine></grille_programmes></rss>`
 
-	loc := time.FixedZone("Europe/Paris", 2*60*60)
+	loc, err := time.LoadLocation("America/Toronto")
+	if err != nil { t.Fatal(err) }
 	got, err := Parse(strings.NewReader(xml), loc)
 	if err != nil { t.Fatal(err) }
 	if len(got) != 1 { t.Fatalf("got %d programmes, want 1", len(got)) }
 	p := got[0]
 	if p.ProgramID != "P123" || p.BroadcastID != "B456" || p.Title != "Le film" { t.Fatalf("unexpected identity: %+v", p) }
 	if p.Start.Format("2006-01-02 15:04") != "2026-10-10 20:10" { t.Fatalf("unexpected start: %v", p.Start) }
+	if _, offset := p.Start.Zone(); offset != -4*60*60 { t.Fatalf("unexpected timezone offset: %v", p.Start) }
 	if !p.Signage.HD || !p.Signage.VOST || !p.Signage.Subtitle || !p.Signage.Live || !p.Signage.Unreleased || !p.Signage.Clear { t.Fatalf("signage flags not parsed: %+v", p.Signage) }
 	if len(p.Cast) != 1 || p.Cast[0].Name != "Jean Test" || p.Cast[0].Role != "Paul" { t.Fatalf("cast not parsed: %+v", p.Cast) }
 }
