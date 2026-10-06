@@ -12,8 +12,12 @@ func TestWeeksForRange(t *testing.T) {
 
 	got := WeeksForRange(start, end)
 	want := []WeekRef{{2026, 41}, {2026, 42}, {2026, 43}}
-	if len(got) != len(want) { t.Fatalf("got %v, want %v", got, want) }
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
 	for i := range want {
-		if got[i] != want[i] { t.Fatalf("got %v, want %v", got[i], want[i]) }
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got[i], want[i])
+		}
 	}
 }
