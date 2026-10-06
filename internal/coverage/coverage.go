@@ -1,0 +1,61 @@
+package coverage
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/lucforcier/m6-epg/internal/scraper/m6pro"
+	"github.com/lucforcier/m6-epg/internal/store/sqlite"
+)
+
+type WeekFetcher func(context.Context, *http.Client, *time.Location, int, int) ([]m6pro.Programme, error)
+
+// EnsureCoverage extends SQLite coverage through horizon. M6 weeks are fetched
+// only when they are not already present in the database.
+func EnsureCoverage(
+	ctx context.Context,
+	store *sqlite.Store,
+	client *http.Client,
+	location *time.Location,
+	now time.Time,
+	horizon time.Duration,
+	fetch WeekFetcher,
+) error {
+	if store == nil {
+		return fmt.Errorf("store is required")
+	}
+	if location == nil {
+		return fmt.Errorf("location is required")
+	}
+	if horizon < 0 {
+		return fmt.Errorf("horizon must not be negative")
+	}
+	if fetch == nil {
+		fetch = m6pro.FetchWeek
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	end := now.Add(horizon)
+	for _, ref := range m6pro.WeeksForRange(now, end) {
+		present, err := store.HasWeek(ref.Year, ref.Number)
+		if err != nil {
+			return err
+		}
+		if present {
+			continue
+		}
+
+		programmes, err := fetch(ctx, client, location, ref.Year, ref.Number)
+		if err != nil {
+			return fmt.Errorf("fetch M6 week %04d-%02d: %w", ref.Year, ref.Number, err)
+		}
+		if err := store.ReplaceWeek(ref.Year, ref.Number, programmes); err != nil {
+			return fmt.Errorf("store M6 week %04d-%02d: %w", ref.Year, ref.Number, err)
+		}
+	}
+	return nil
+}
