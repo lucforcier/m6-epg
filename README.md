@@ -52,6 +52,48 @@ Le endpoint XMLTV ne déclenche pas de scraping.
 
 L'enrichissement externe des métadonnées est volontairement hors périmètre pour le moment. Des pistes comme TMDB, TVmaze et Wikidata ont été étudiées mais ne sont pas nécessaires à la première version.
 
+## Docker
+
+Une image publique est publiée automatiquement vers GitHub Container Registry à chaque modification de `main`.
+
+Image :
+
+`ghcr.io/lucforcier/m6-epg:latest`
+
+Exemple Compose :
+
+```yaml
+services:
+  m6-epg:
+    image: ghcr.io/lucforcier/m6-epg:latest
+    environment:
+      REFRESH_TIME: "03:00"
+      SCHEDULE_LOCATION: "America/Toronto"
+    volumes:
+      - m6-data:/data
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
+volumes:
+  m6-data:
+```
+
+Le conteneur écoute sur le port 8080. Le port hôte peut être changé avec `HOST_PORT` dans le fichier `.env`. Le volume `/data` conserve la base SQLite et le guide XMLTV lors des recréations du conteneur.
+
+Copie de départ pour la configuration :
+
+```bash
+cp .env.example .env
+```
+
+Endpoints :
+
+- `http://localhost:8081/epg.xml`
+- `http://localhost:8081/healthz`
+
+Le package GHCR doit être rendu **Public** dans les paramètres GitHub du package après sa première publication si GitHub l'a créé avec une visibilité privée. Les images publiques de GHCR peuvent ensuite être téléchargées sans authentification. citeturn0search0turn0search1
+
 ## Développement
 
 ```text
