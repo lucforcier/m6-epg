@@ -20,7 +20,6 @@ const (
 	defaultDBPath         = "/data/m6.db"
 	defaultGuidePath      = "/data/m6.xmltv"
 	defaultCoverageDay    = 21
-	defaultLocation       = "Europe/Paris"
 	defaultOutputLocation = "America/Toronto"
 	defaultHTTPAddr       = "0.0.0.0:8080"
 	defaultRefreshTime    = "03:00"
@@ -30,17 +29,12 @@ const (
 func main() {
 	dbPath := envString("DB_PATH", defaultDBPath)
 	guidePath := envString("GUIDE_PATH", defaultGuidePath)
-	locationName := envString("M6_LOCATION", defaultLocation)
 	outputLocationName := envString("OUTPUT_LOCATION", defaultOutputLocation)
 	coverageDays := envInt("COVERAGE_DAYS", defaultCoverageDay)
 	httpAddr := envString("HTTP_ADDR", defaultHTTPAddr)
 	refreshTime := envString("REFRESH_TIME", defaultRefreshTime)
 	scheduleLocationName := envString("SCHEDULE_LOCATION", defaultScheduleLoc)
 
-	location, err := time.LoadLocation(locationName)
-	if err != nil {
-		log.Fatalf("load location %q: %v", locationName, err)
-	}
 	outputLocation, err := time.LoadLocation(outputLocationName)
 	if err != nil {
 		log.Fatalf("load output location %q: %v", outputLocationName, err)
@@ -59,12 +53,12 @@ func main() {
 	}
 	defer store.Close()
 
-	log.Printf("m6-epg: database=%s guide=%s coverage=%dd location=%s output=%s refresh=%s schedule=%s", dbPath, guidePath, coverageDays, locationName, outputLocationName, refreshTime, scheduleLocationName)
+	log.Printf("m6-epg: database=%s guide=%s coverage=%dd location=%s refresh=%s schedule=%s", dbPath, guidePath, coverageDays, outputLocationName, refreshTime, scheduleLocationName)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := refresh(ctx, store, http.DefaultClient, location, outputLocation, guidePath, coverageDays); err != nil {
+	if err := refresh(ctx, store, http.DefaultClient, outputLocation, guidePath, coverageDays); err != nil {
 		if ctx.Err() != nil {
 			return
 		}
@@ -103,7 +97,7 @@ func main() {
 
 	schedulerErr := make(chan error, 1)
 	go func() {
-		schedulerErr <- runScheduler(ctx, store, http.DefaultClient, location, outputLocation, guidePath, coverageDays, refreshTime, scheduleLocation)
+		schedulerErr <- runScheduler(ctx, store, http.DefaultClient, outputLocation, guidePath, coverageDays, refreshTime, scheduleLocation)
 	}()
 
 	select {
@@ -133,7 +127,7 @@ func main() {
 	}
 }
 
-func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, location, outputLocation *time.Location, guidePath string, coverageDays int) error {
+func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, location *time.Location, guidePath string, coverageDays int) error {
 	now := time.Now().In(location)
 	if err := coverage.EnsureCoverage(
 		ctx,
@@ -147,7 +141,7 @@ func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, loca
 		return fmt.Errorf("ensure coverage: %w", err)
 	}
 
-	if err := writeGuide(store, guidePath, outputLocation, now); err != nil {
+	if err := writeGuide(store, guidePath, location, now); err != nil {
 		return fmt.Errorf("write XMLTV: %w", err)
 	}
 
@@ -168,7 +162,7 @@ func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, loca
 	return nil
 }
 
-func runScheduler(ctx context.Context, store *sqlite.Store, client *http.Client, location, outputLocation *time.Location, guidePath string, coverageDays int, refreshTime string, scheduleLocation *time.Location) error {
+func runScheduler(ctx context.Context, store *sqlite.Store, client *http.Client, location *time.Location, guidePath string, coverageDays int, refreshTime string, scheduleLocation *time.Location) error {
 	for {
 		now := time.Now().In(scheduleLocation)
 		next, err := nextRefresh(now, refreshTime)
@@ -193,7 +187,7 @@ func runScheduler(ctx context.Context, store *sqlite.Store, client *http.Client,
 		}
 
 		log.Printf("m6-epg: scheduled refresh starting")
-		if err := refresh(ctx, store, client, location, outputLocation, guidePath, coverageDays); err != nil {
+		if err := refresh(ctx, store, client, location, guidePath, coverageDays); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
