@@ -52,17 +52,15 @@ func m6WeekStart(t time.Time) time.Time {
 }
 
 // m6WeekRef maps an M6 week start to the year/number used by pro.m6.fr.
-// The M6 week containing January 1 is week 1 of that calendar year.
+// Week 1 is the M6 week (Saturday-Friday) containing January 1.
 func m6WeekRef(start time.Time) (int, int) {
 	start = m6WeekStart(start)
 
 	year := start.Year()
-	jan1 := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
-	first := m6WeekStart(jan1)
-
-	if start.Before(jan1) {
-		year = jan1.Year()
-		first = start
+	first := m6WeekStart(time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC))
+	if start.Before(first) {
+		year--
+		first = m6WeekStart(time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC))
 	}
 
 	weeks := int(start.Sub(first).Hours() / (24 * 7))
