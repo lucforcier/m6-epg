@@ -19,6 +19,7 @@ const (
 	defaultCoverageDay    = 21
 	defaultLocation       = "Europe/Paris"
 	defaultOutputLocation = "America/Toronto"
+	defaultHTTPAddr       = "0.0.0.0:8080"
 )
 
 func main() {
@@ -27,6 +28,7 @@ func main() {
 	locationName := envString("M6_LOCATION", defaultLocation)
 	outputLocationName := envString("OUTPUT_LOCATION", defaultOutputLocation)
 	coverageDays := envInt("COVERAGE_DAYS", defaultCoverageDay)
+	httpAddr := envString("HTTP_ADDR", defaultHTTPAddr)
 
 	location, err := time.LoadLocation(locationName)
 	if err != nil {
@@ -58,12 +60,9 @@ func main() {
 		log.Fatalf("ensure coverage: %v", err)
 	}
 
-	guideStart := now
-	guideEnd := now.Add(14 * 24 * time.Hour)
-	programmes, err := store.ProgramsBetween(guideStart, guideEnd)
-	if err != nil { log.Fatalf("query guide programmes: %v", err) }
-	if err := xmltv.Write(guidePath, guideStart, guideEnd, outputLocation, programmes); err != nil { log.Fatalf("write XMLTV: %v", err) }
-	log.Printf("m6-epg: XMLTV written to %s programmes=%d", guidePath, len(programmes))
+	if err := writeGuide(store, guidePath, outputLocation, now); err != nil {
+		log.Fatalf("write XMLTV: %v", err)
+	}
 
 	count, err := store.Count()
 	if err != nil {
@@ -79,6 +78,44 @@ func main() {
 	} else {
 		log.Printf("m6-epg: coverage ready; no source weeks stored programmes=%d", count)
 	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/epg.xml", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+		http.ServeFile(w, r, guidePath)
+	})
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
+
+	log.Printf("m6-epg: HTTP listening on %s", httpAddr)
+	if err := http.ListenAndServe(httpAddr, mux); err != nil {
+		log.Fatalf("HTTP server: %v", err)
+	}
+}
+
+func writeGuide(store *sqlite.Store, guidePath string, outputLocation *time.Location, now time.Time) error {
+	guideStart := now
+	guideEnd := now.Add(14 * 24 * time.Hour)
+	programmes, err := store.ProgramsBetween(guideStart, guideEnd)
+	if err != nil {
+		return err
+	}
+	if err := xmltv.Write(guidePath, guideStart, guideEnd, outputLocation, programmes); err != nil {
+		return err
+	}
+	log.Printf("m6-epg: XMLTV written to %s programmes=%d", guidePath, len(programmes))
+	return nil
 }
 
 func envString(name, fallback string) string {
