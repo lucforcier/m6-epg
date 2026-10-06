@@ -101,8 +101,23 @@ func main() {
 		serverErr <- server.ListenAndServe()
 	}()
 
-	if err := runScheduler(ctx, store, http.DefaultClient, location, outputLocation, guidePath, coverageDays, refreshTime, scheduleLocation); err != nil && ctx.Err() == nil {
-		log.Printf("m6-epg: scheduler stopped: %v", err)
+	schedulerErr := make(chan error, 1)
+	go func() {
+		schedulerErr <- runScheduler(ctx, store, http.DefaultClient, location, outputLocation, guidePath, coverageDays, refreshTime, scheduleLocation)
+	}()
+
+	select {
+	case err := <-serverErr:
+		if err != nil && err != http.ErrServerClosed {
+			log.Printf("m6-epg: HTTP server: %v", err)
+		}
+		stop()
+	case err := <-schedulerErr:
+		if err != nil && ctx.Err() == nil {
+			log.Printf("m6-epg: scheduler stopped: %v", err)
+		}
+		stop()
+	case <-ctx.Done():
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
