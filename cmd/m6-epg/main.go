@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	defaultDBPath      = "/data/m6.db"
-	defaultGuidePath   = "/data/m6.xmltv"
-	defaultCoverageDay = 21
+	defaultDBPath         = "/data/m6.db"
+	defaultGuidePath      = "/data/m6.xmltv"
+	defaultCoverageDay    = 21
 	defaultLocation       = "Europe/Paris"
 	defaultOutputLocation = "America/Toronto"
 )
