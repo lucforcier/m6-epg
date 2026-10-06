@@ -92,7 +92,7 @@ Endpoints :
 - `http://localhost:8081/epg.xml`
 - `http://localhost:8081/healthz`
 
-Le package GHCR doit être rendu **Public** dans les paramètres GitHub du package après sa première publication si GitHub l'a créé avec une visibilité privée. Les images publiques de GHCR peuvent ensuite être téléchargées sans authentification. citeturn0search0turn0search1
+Le package GHCR doit être rendu **Public** dans les paramètres GitHub du package après sa première publication si GitHub l'a créé avec une visibilité privée. Les images publiques de GHCR peuvent ensuite être téléchargées sans authentification.
 
 ## Développement
 
