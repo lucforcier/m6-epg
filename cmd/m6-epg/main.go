@@ -10,6 +10,7 @@ import (
 
 	"github.com/lucforcier/m6-epg/internal/coverage"
 	"github.com/lucforcier/m6-epg/internal/store/sqlite"
+	"github.com/lucforcier/m6-epg/internal/xmltv"
 )
 
 const (
@@ -50,6 +51,13 @@ func main() {
 	); err != nil {
 		log.Fatalf("ensure coverage: %v", err)
 	}
+
+	guideStart := now
+	guideEnd := now.Add(14 * 24 * time.Hour)
+	programmes, err := store.ProgramsBetween(guideStart, guideEnd)
+	if err != nil { log.Fatalf("query guide programmes: %v", err) }
+	if err := xmltv.Write(guidePath, guideStart, guideEnd, programmes); err != nil { log.Fatalf("write XMLTV: %v", err) }
+	log.Printf("m6-epg: XMLTV written to %s programmes=%d", guidePath, len(programmes))
 
 	count, err := store.Count()
 	if err != nil {
