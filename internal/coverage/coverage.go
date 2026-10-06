@@ -23,6 +23,33 @@ func EnsureCoverage(
 	horizon time.Duration,
 	fetch WeekFetcher,
 ) error {
+	return ensureCoverage(ctx, store, client, location, now, horizon, fetch, false)
+}
+
+// RefreshCoverage refreshes all M6 weeks needed through horizon, replacing any
+// versions already present in SQLite.
+func RefreshCoverage(
+	ctx context.Context,
+	store *sqlite.Store,
+	client *http.Client,
+	location *time.Location,
+	now time.Time,
+	horizon time.Duration,
+	fetch WeekFetcher,
+) error {
+	return ensureCoverage(ctx, store, client, location, now, horizon, fetch, true)
+}
+
+func ensureCoverage(
+	ctx context.Context,
+	store *sqlite.Store,
+	client *http.Client,
+	location *time.Location,
+	now time.Time,
+	horizon time.Duration,
+	fetch WeekFetcher,
+	refreshExisting bool,
+) error {
 	if store == nil {
 		return fmt.Errorf("store is required")
 	}
@@ -41,12 +68,14 @@ func EnsureCoverage(
 
 	end := now.Add(horizon)
 	for _, ref := range m6pro.WeeksForRange(now, end) {
-		present, err := store.HasWeek(ref.Year, ref.Number)
-		if err != nil {
-			return err
-		}
-		if present {
-			continue
+		if !refreshExisting {
+			present, err := store.HasWeek(ref.Year, ref.Number)
+			if err != nil {
+				return err
+			}
+			if present {
+				continue
+			}
 		}
 
 		programmes, err := fetch(ctx, client, location, ref.Year, ref.Number)
