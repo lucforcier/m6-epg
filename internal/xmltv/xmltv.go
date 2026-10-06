@@ -1,6 +1,7 @@
 package xmltv
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -33,12 +34,28 @@ type programme struct {
 	Title      textElement  `xml:"title"`
 	SubTitle   *textElement `xml:"sub-title,omitempty"`
 	Desc       *textElement `xml:"desc,omitempty"`
+	Icon       *icon        `xml:"icon,omitempty"`
+	Credits    *credits     `xml:"credits,omitempty"`
 	EpisodeNum *episodeNum  `xml:"episode-num,omitempty"`
 }
 
 type textElement struct {
 	Lang string `xml:"lang,attr,omitempty"`
 	Text string `xml:",chardata"`
+}
+
+type icon struct {
+	Src string `xml:"src,attr"`
+}
+
+type credits struct {
+	Presenters []string `xml:"presenter,omitempty"`
+}
+
+type castMember struct {
+	Type string `json:"Type"`
+	Name string `json:"Name"`
+	Role string `json:"Role"`
 }
 
 type episodeNum struct {
@@ -89,6 +106,16 @@ func Write(path string, start, end time.Time, location *time.Location, programme
 		if p.Synopsis != "" {
 			item.Desc = &textElement{Lang: "fr", Text: p.Synopsis}
 		}
+		if p.Photo != "" {
+			item.Icon = &icon{Src: p.Photo}
+		}
+		presenters, err := presentersFromJSON(p.CastJSON)
+		if err != nil {
+			return fmt.Errorf("parse cast for %q: %w", p.Title, err)
+		}
+		if len(presenters) > 0 {
+			item.Credits = &credits{Presenters: presenters}
+		}
 		if value, ok := xmltvNS(p.Season, p.Episode); ok {
 			item.EpisodeNum = &episodeNum{System: "xmltv_ns", Text: value}
 		}
@@ -124,6 +151,23 @@ func Write(path string, start, end time.Time, location *time.Location, programme
 		return fmt.Errorf("replace XMLTV file: %w", err)
 	}
 	return nil
+}
+
+func presentersFromJSON(value string) ([]string, error) {
+	if value == "" || value == "null" || value == "[]" {
+		return nil, nil
+	}
+	var cast []castMember
+	if err := json.Unmarshal([]byte(value), &cast); err != nil {
+		return nil, err
+	}
+	var presenters []string
+	for _, member := range cast {
+		if member.Type == "Animateur / présentateur" && member.Name != "" {
+			presenters = append(presenters, member.Name)
+		}
+	}
+	return presenters, nil
 }
 
 func xmltvNS(season, episode string) (string, bool) {
