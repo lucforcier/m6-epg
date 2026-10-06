@@ -151,17 +151,18 @@ type Programme struct {
 	Start time.Time
 	Title, OriginalTitle, Subtitle, EpisodeTitle string
 	Season, Episode, Synopsis string
+	Photo, CastJSON string
 }
 
 func (s *Store) ProgramsBetween(start, end time.Time) ([]Programme, error) {
-	rows, err := s.db.Query("SELECT program_id, broadcast_id, start_time, title, original_title, subtitle, episode_title, season, episode, synopsis FROM programmes WHERE start_time >= ? AND start_time < ? ORDER BY start_time, broadcast_id", start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339))
+	rows, err := s.db.Query("SELECT program_id, broadcast_id, start_time, title, original_title, subtitle, episode_title, season, episode, synopsis, photo, cast_json FROM programmes WHERE start_time >= ? AND start_time < ? ORDER BY start_time, broadcast_id", start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339))
 	if err != nil { return nil, fmt.Errorf("query programmes: %w", err) }
 	defer rows.Close()
 	var programmes []Programme
 	for rows.Next() {
 		var p Programme
 		var startText string
-		if err := rows.Scan(&p.ProgramID, &p.BroadcastID, &startText, &p.Title, &p.OriginalTitle, &p.Subtitle, &p.EpisodeTitle, &p.Season, &p.Episode, &p.Synopsis); err != nil { return nil, fmt.Errorf("scan programme: %w", err) }
+		if err := rows.Scan(&p.ProgramID, &p.BroadcastID, &startText, &p.Title, &p.OriginalTitle, &p.Subtitle, &p.EpisodeTitle, &p.Season, &p.Episode, &p.Synopsis, &p.Photo, &p.CastJSON); err != nil { return nil, fmt.Errorf("scan programme: %w", err) }
 		p.Start, err = time.Parse(time.RFC3339, startText)
 		if err != nil { return nil, fmt.Errorf("parse programme start %q: %w", startText, err) }
 		programmes = append(programmes, p)
