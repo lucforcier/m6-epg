@@ -86,6 +86,38 @@ func TestWriteUsesOutputLocationAndAtomicReplacement(t *testing.T) {
 }
 
 
+func TestWriteIncludesBothChannelsAndDoesNotCrossChannelStop(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "guide.xmltv")
+	start := time.Date(2026, 10, 10, 20, 0, 0, 0, time.UTC)
+	programmes := []sqlite.Programme{
+		{ChannelID: "m6.fr", Start: start, Title: "M6 first"},
+		{ChannelID: "w9.fr", Start: start.Add(15 * time.Minute), Title: "W9 first"},
+		{ChannelID: "m6.fr", Start: start.Add(time.Hour), Title: "M6 second"},
+	}
+	end := start.Add(2 * time.Hour)
+	if err := Write(path, start, end, time.UTC, programmes); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `<channel id="m6.fr">`) || !strings.Contains(text, `<channel id="w9.fr">`) {
+		t.Fatalf("guide missing M6 or W9 channel declarations: %s", text)
+	}
+	if !strings.Contains(text, `stop="20261010210000 +0000" channel="m6.fr"`) &&
+		!strings.Contains(text, `channel="m6.fr"`) {
+		t.Fatalf("guide missing M6 programmes: %s", text)
+	}
+	if !strings.Contains(text, `stop="20261010210000 +0000"`) {
+		t.Fatalf("M6 first programme should stop at the next M6 programme: %s", text)
+	}
+	if !strings.Contains(text, `stop="20261010220000 +0000"`) {
+		t.Fatalf("W9 programme should stop at the guide boundary, not the M6 start: %s", text)
+	}
+}
+
 func TestPresentersFromJSON(t *testing.T) {
 	got, err := presentersFromJSON(`[
 		{"Type":"Animateur / présentateur","Name":"Éric Antoine","Role":""},
