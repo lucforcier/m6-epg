@@ -2,6 +2,7 @@ package coverage
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"testing"
@@ -124,7 +125,7 @@ func TestEnsureW9CoverageUsesIndependentW9Cache(t *testing.T) {
 	var fetched []m6pro.WeekRef
 	fetch := func(ctx context.Context, client *http.Client, location *time.Location, year, week int) ([]m6pro.Programme, error) {
 		fetched = append(fetched, m6pro.WeekRef{Year: year, Number: week})
-		return []m6pro.Programme{{ProgramID: "w9-new", BroadcastID: "b", Start: now, Title: "W9 programme"}}, nil
+		return []m6pro.Programme{{ProgramID: fmt.Sprintf("w9-%d", week), BroadcastID: "b", Start: time.Date(year, 10, 10+7*(week-42), 12, 0, 0, 0, time.UTC), Title: "W9 programme"}}, nil
 	}
 	if err := EnsureW9Coverage(context.Background(), store, nil, time.UTC, now, 14*24*time.Hour, fetch); err != nil {
 		t.Fatal(err)
@@ -132,9 +133,9 @@ func TestEnsureW9CoverageUsesIndependentW9Cache(t *testing.T) {
 	if len(fetched) != 2 || fetched[0] != (m6pro.WeekRef{Year: 2026, Number: 42}) || fetched[1] != (m6pro.WeekRef{Year: 2026, Number: 43}) {
 		t.Fatalf("fetched W9 weeks = %#v, want 2026-42 and 2026-43", fetched)
 	}
-	m6Rows, err := store.ProgramsBetween(now.Add(-time.Hour), now.Add(time.Hour))
+	m6Rows, err := store.ProgramsBetween(now.Add(-time.Hour), now.Add(15*24*time.Hour))
 	if err != nil { t.Fatal(err) }
-	w9Rows, err := store.ProgramsBetweenW9(now.Add(-time.Hour), now.Add(time.Hour))
+	w9Rows, err := store.ProgramsBetweenW9(now.Add(-time.Hour), now.Add(15*24*time.Hour))
 	if err != nil { t.Fatal(err) }
 	if len(m6Rows) != 0 || len(w9Rows) != 3 {
 		t.Fatalf("M6 rows=%d W9 rows=%d, want 0 and 3", len(m6Rows), len(w9Rows))
