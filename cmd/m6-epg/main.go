@@ -129,38 +129,49 @@ func main() {
 
 func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, location *time.Location, guidePath string, coverageDays int, refreshExisting bool) error {
 	now := time.Now().In(location)
-	coverageRefresh := coverage.EnsureCoverage
-	if refreshExisting {
-		coverageRefresh = coverage.RefreshCoverage
-	}
-	if err := coverageRefresh(
-		ctx,
-		store,
-		client,
-		location,
-		now,
-		time.Duration(coverageDays)*24*time.Hour,
-		nil,
-	); err != nil {
-		return fmt.Errorf("ensure M6 coverage: %w", err)
-	}
 
-	// W9 is an additional source: a temporary W9 outage must not prevent
-	// publication of the existing M6 guide. Previously stored W9 data is kept.
+	// Refresh both source grids concurrently. SQLite writes are serialized by
+	// the store's single-connection pool, while HTTP fetches overlap.
+	coverageRefresh := coverage.EnsureCoverage
 	w9Refresh := coverage.EnsureW9Coverage
 	if refreshExisting {
+		coverageRefresh = coverage.RefreshCoverage
 		w9Refresh = coverage.RefreshW9Coverage
 	}
-	if err := w9Refresh(
-		ctx,
-		store,
-		client,
-		location,
-		now,
-		time.Duration(coverageDays)*24*time.Hour,
-		nil,
-	); err != nil {
-		log.Printf("m6-epg: W9 refresh failed; continuing with available data: %v", err)
+	horizon := time.Duration(coverageDays) * 24 * time.Hour
+	type refreshResult struct {
+		source string
+		err    error
+	}
+	results := make(chan refreshResult, 2)
+	go func() {
+		results <- refreshResult{source: "M6", err: coverageRefresh(
+			ctx, store, client, location, now, horizon, nil,
+		)}
+	}()
+	go func() {
+		results <- refreshResult{source: "W9", err: w9Refresh(
+			ctx, store, client, location, now, horizon, nil,
+		)}
+	}()
+
+	var m6Err, w9Err error
+	for range 2 {
+		result := <-results
+		switch result.source {
+		case "M6":
+			m6Err = result.err
+		case "W9":
+			w9Err = result.err
+		}
+	}
+	if m6Err != nil {
+		return fmt.Errorf("ensure M6 coverage: %w", m6Err)
+	}
+	// W9 is an additional source: a temporary W9 outage must not prevent
+	// publication of the existing M6 guide. Previously stored W9 data is kept.
+	if w9Err != nil {
+		log.Printf("m6-epg: W9 refresh failed; continuing with available data: %v", w9Err)
 	}
 
 	if err := writeGuide(store, guidePath, location, now); err != nil {
