@@ -44,3 +44,25 @@ func TestM6WeekRef(t *testing.T) {
 		}
 	}
 }
+
+func TestWeeksForRangeUsesParisCalendarNearMidnight(t *testing.T) {
+	toronto, err := time.LoadLocation("America/Toronto")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// At 18:01 on Friday in Toronto, it is already Saturday in Paris.
+	start := time.Date(2026, 10, 9, 18, 1, 0, 0, toronto)
+	end := start.Add(6 * time.Hour)
+
+	got := WeeksForRange(start, end)
+	want := []WeekRef{{2026, 42}}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got[i], want[i])
+		}
+	}
+}
