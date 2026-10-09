@@ -306,6 +306,14 @@ func (s *Store) ProgramsBetween(start, end time.Time) ([]Programme, error) {
 	return programmes, nil
 }
 
+func (s *Store) CountW9() (int, error) {
+	var n int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM w9_programmes").Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 func (s *Store) Count() (int, error) {
 	var n int
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM programmes").Scan(&n); err != nil {
