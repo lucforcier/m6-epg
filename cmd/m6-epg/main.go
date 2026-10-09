@@ -142,7 +142,25 @@ func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, loca
 		time.Duration(coverageDays)*24*time.Hour,
 		nil,
 	); err != nil {
-		return fmt.Errorf("ensure coverage: %w", err)
+		return fmt.Errorf("ensure M6 coverage: %w", err)
+	}
+
+	// W9 is an additional source: a temporary W9 outage must not prevent
+	// publication of the existing M6 guide. Previously stored W9 data is kept.
+	w9Refresh := coverage.EnsureW9Coverage
+	if refreshExisting {
+		w9Refresh = coverage.RefreshW9Coverage
+	}
+	if err := w9Refresh(
+		ctx,
+		store,
+		client,
+		location,
+		now,
+		time.Duration(coverageDays)*24*time.Hour,
+		nil,
+	); err != nil {
+		log.Printf("m6-epg: W9 refresh failed; continuing with available data: %v", err)
 	}
 
 	if err := writeGuide(store, guidePath, location, now); err != nil {
@@ -241,10 +259,15 @@ func writeGuide(store *sqlite.Store, guidePath string, outputLocation *time.Loca
 	if err != nil {
 		return err
 	}
+	w9Programmes, err := store.ProgramsBetweenW9(guideStart, guideEnd)
+	if err != nil {
+		return err
+	}
+	programmes = append(programmes, w9Programmes...)
 	if err := xmltv.Write(guidePath, guideStart, guideEnd, outputLocation, programmes); err != nil {
 		return err
 	}
-	log.Printf("m6-epg: XMLTV written to %s programmes=%d", guidePath, len(programmes))
+	log.Printf("m6-epg: XMLTV written to %s programmes=%d (M6 + W9)", guidePath, len(programmes))
 	return nil
 }
 
