@@ -167,9 +167,13 @@ func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, loca
 		return fmt.Errorf("write XMLTV: %w", err)
 	}
 
-	count, err := store.Count()
+	m6Count, err := store.Count()
 	if err != nil {
-		return fmt.Errorf("count programmes: %w", err)
+		return fmt.Errorf("count M6 programmes: %w", err)
+	}
+	w9Count, err := store.CountW9()
+	if err != nil {
+		return fmt.Errorf("count W9 programmes: %w", err)
 	}
 
 	year, week, ok, err := store.LatestSourceWeek()
@@ -177,9 +181,9 @@ func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, loca
 		return fmt.Errorf("find latest source week: %w", err)
 	}
 	if ok {
-		log.Printf("m6-epg: coverage ready; latest source week=%04d-%02d programmes=%d", year, week, count)
+		log.Printf("m6-epg: coverage ready; latest M6 source week=%04d-%02d programmes M6=%d W9=%d", year, week, m6Count, w9Count)
 	} else {
-		log.Printf("m6-epg: coverage ready; no source weeks stored programmes=%d", count)
+		log.Printf("m6-epg: coverage ready; no M6 source weeks stored programmes M6=%d W9=%d", m6Count, w9Count)
 	}
 	return nil
 }
