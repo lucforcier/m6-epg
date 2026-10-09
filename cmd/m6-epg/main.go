@@ -142,16 +142,38 @@ func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, loca
 		time.Duration(coverageDays)*24*time.Hour,
 		nil,
 	); err != nil {
-		return fmt.Errorf("ensure coverage: %w", err)
+		return fmt.Errorf("ensure M6 coverage: %w", err)
+	}
+
+	// W9 is an additional source: a temporary W9 outage must not prevent
+	// publication of the existing M6 guide. Previously stored W9 data is kept.
+	w9Refresh := coverage.EnsureW9Coverage
+	if refreshExisting {
+		w9Refresh = coverage.RefreshW9Coverage
+	}
+	if err := w9Refresh(
+		ctx,
+		store,
+		client,
+		location,
+		now,
+		time.Duration(coverageDays)*24*time.Hour,
+		nil,
+	); err != nil {
+		log.Printf("m6-epg: W9 refresh failed; continuing with available data: %v", err)
 	}
 
 	if err := writeGuide(store, guidePath, location, now); err != nil {
 		return fmt.Errorf("write XMLTV: %w", err)
 	}
 
-	count, err := store.Count()
+	m6Count, err := store.Count()
 	if err != nil {
-		return fmt.Errorf("count programmes: %w", err)
+		return fmt.Errorf("count M6 programmes: %w", err)
+	}
+	w9Count, err := store.CountW9()
+	if err != nil {
+		return fmt.Errorf("count W9 programmes: %w", err)
 	}
 
 	year, week, ok, err := store.LatestSourceWeek()
@@ -159,9 +181,9 @@ func refresh(ctx context.Context, store *sqlite.Store, client *http.Client, loca
 		return fmt.Errorf("find latest source week: %w", err)
 	}
 	if ok {
-		log.Printf("m6-epg: coverage ready; latest source week=%04d-%02d programmes=%d", year, week, count)
+		log.Printf("m6-epg: coverage ready; latest M6 source week=%04d-%02d programmes M6=%d W9=%d", year, week, m6Count, w9Count)
 	} else {
-		log.Printf("m6-epg: coverage ready; no source weeks stored programmes=%d", count)
+		log.Printf("m6-epg: coverage ready; no M6 source weeks stored programmes M6=%d W9=%d", m6Count, w9Count)
 	}
 	return nil
 }
@@ -241,10 +263,15 @@ func writeGuide(store *sqlite.Store, guidePath string, outputLocation *time.Loca
 	if err != nil {
 		return err
 	}
+	w9Programmes, err := store.ProgramsBetweenW9(guideStart, guideEnd)
+	if err != nil {
+		return err
+	}
+	programmes = append(programmes, w9Programmes...)
 	if err := xmltv.Write(guidePath, guideStart, guideEnd, outputLocation, programmes); err != nil {
 		return err
 	}
-	log.Printf("m6-epg: XMLTV written to %s programmes=%d", guidePath, len(programmes))
+	log.Printf("m6-epg: XMLTV written to %s programmes=%d (M6 + W9)", guidePath, len(programmes))
 	return nil
 }
 

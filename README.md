@@ -1,12 +1,15 @@
 # m6-epg
 
-Service Go permanent qui récupère le programme de M6 depuis les données M6 PRO, maintient une couverture source de 21 jours et expose un guide XMLTV glissant de 14 jours par HTTP.
+Service Go permanent qui récupère les grilles de M6 et de W9 depuis M6 PRO, maintient une couverture source de 21 jours et expose un guide XMLTV commun de 14 jours par HTTP.
 
 ## État
 
 La première version fonctionnelle est maintenant validée :
 
-- scraper M6 PRO par semaines samedi-vendredi ;
+- scrapers M6 PRO pour M6 et W9, par semaines samedi-vendredi ;
+- guide XMLTV unique contenant les chaînes `m6.fr` et `w9.fr` ;
+- stockage SQLite séparé pour les semaines de chaque chaîne ;
+- une indisponibilité temporaire de W9 ne bloque pas la publication du guide M6 ;
 - stockage SQLite ;
 - couverture future configurable, 21 jours par défaut ;
 - guide XMLTV de 14 jours ;
@@ -42,7 +45,7 @@ Variables d'environnement principales :
 
 ## HTTP
 
-- `GET /epg.xml` — dernier guide XMLTV valide ;
+- `GET /epg.xml` — dernier guide XMLTV valide contenant M6 et W9 ;
 - `HEAD /epg.xml` — vérification du guide ;
 - `GET /healthz` — retourne `ok`.
 

@@ -40,6 +40,81 @@ func RefreshCoverage(
 	return ensureCoverage(ctx, store, client, location, now, horizon, fetch, true)
 }
 
+// EnsureW9Coverage extends W9 coverage, fetching only weeks absent from SQLite.
+func EnsureW9Coverage(
+	ctx context.Context,
+	store *sqlite.Store,
+	client *http.Client,
+	location *time.Location,
+	now time.Time,
+	horizon time.Duration,
+	fetch WeekFetcher,
+) error {
+	return ensureW9Coverage(ctx, store, client, location, now, horizon, fetch, false)
+}
+
+// RefreshW9Coverage refreshes every W9 week needed through horizon.
+func RefreshW9Coverage(
+	ctx context.Context,
+	store *sqlite.Store,
+	client *http.Client,
+	location *time.Location,
+	now time.Time,
+	horizon time.Duration,
+	fetch WeekFetcher,
+) error {
+	return ensureW9Coverage(ctx, store, client, location, now, horizon, fetch, true)
+}
+
+func ensureW9Coverage(
+	ctx context.Context,
+	store *sqlite.Store,
+	client *http.Client,
+	location *time.Location,
+	now time.Time,
+	horizon time.Duration,
+	fetch WeekFetcher,
+	refreshExisting bool,
+) error {
+	if store == nil {
+		return fmt.Errorf("store is required")
+	}
+	if location == nil {
+		return fmt.Errorf("location is required")
+	}
+	if horizon < 0 {
+		return fmt.Errorf("horizon must not be negative")
+	}
+	if fetch == nil {
+		fetch = func(ctx context.Context, client *http.Client, location *time.Location, year, week int) ([]m6pro.Programme, error) {
+			return m6pro.FetchWeekFor(ctx, client, location, "w9", year, week)
+		}
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	for _, ref := range m6pro.WeeksForRange(now, now.Add(horizon)) {
+		if !refreshExisting {
+			present, err := store.HasW9Week(ref.Year, ref.Number)
+			if err != nil {
+				return err
+			}
+			if present {
+				continue
+			}
+		}
+		programmes, err := fetch(ctx, client, location, ref.Year, ref.Number)
+		if err != nil {
+			return fmt.Errorf("fetch W9 week %04d-%02d: %w", ref.Year, ref.Number, err)
+		}
+		if err := store.ReplaceW9Week(ref.Year, ref.Number, programmes); err != nil {
+			return fmt.Errorf("store W9 week %04d-%02d: %w", ref.Year, ref.Number, err)
+		}
+	}
+	return nil
+}
+
 func ensureCoverage(
 	ctx context.Context,
 	store *sqlite.Store,
