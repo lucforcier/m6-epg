@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"time"
 
@@ -18,7 +19,7 @@ const ChannelID = "m6.fr"
 type tv struct {
 	XMLName            xml.Name    `xml:"tv"`
 	GeneratorInfoName string      `xml:"generator-info-name,attr"`
-	Channel            channel     `xml:"channel"`
+	Channel            []channel   `xml:"channel"`
 	Programmes         []programme `xml:"programme"`
 }
 
@@ -82,12 +83,32 @@ func Write(path string, start, end time.Time, location *time.Location, programme
 
 	doc := tv{
 		GeneratorInfoName: "m6-epg",
-		Channel:            channel{ID: ChannelID, DisplayName: "M6"},
+		Channel: []channel{{ID: "m6.fr", DisplayName: "M6"}, {ID: "w9.fr", DisplayName: "W9"}},
 	}
+
+	// Sort by channel and start time so each programme's stop time is
+	// derived from the next programme on that same channel only.
+	programmes = append([]sqlite.Programme(nil), programmes...)
+	for i := range programmes {
+		if programmes[i].ChannelID == "" {
+			programmes[i].ChannelID = ChannelID
+		}
+	}
+	sort.SliceStable(programmes, func(i, j int) bool {
+		if programmes[i].ChannelID != programmes[j].ChannelID {
+			return programmes[i].ChannelID < programmes[j].ChannelID
+		}
+		if !programmes[i].Start.Equal(programmes[j].Start) {
+			return programmes[i].Start.Before(programmes[j].Start)
+		}
+		return programmes[i].BroadcastID < programmes[j].BroadcastID
+	})
 
 	for i, p := range programmes {
 		stop := end
-		if i+1 < len(programmes) && programmes[i+1].Start.Before(stop) {
+		if i+1 < len(programmes) &&
+			programmes[i+1].ChannelID == p.ChannelID &&
+			programmes[i+1].Start.Before(stop) {
 			stop = programmes[i+1].Start
 		}
 		if stop.Before(p.Start) {
@@ -97,7 +118,7 @@ func Write(path string, start, end time.Time, location *time.Location, programme
 		item := programme{
 			Start:   p.Start.In(location).Format("20060102150405 -0700"),
 			Stop:    stop.In(location).Format("20060102150405 -0700"),
-			Channel: ChannelID,
+			Channel: p.ChannelID,
 			Title:   textElement{Lang: "fr", Text: p.Title},
 		}
 		if p.Subtitle != "" {
