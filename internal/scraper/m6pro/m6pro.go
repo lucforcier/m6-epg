@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const baseURL = "https://pro.m6.fr/m6/grille"
+const baseURL = "https://pro.m6.fr"
 
 type Programme struct {
 	ProgramID, BroadcastID string
@@ -159,24 +159,41 @@ func Parse(r io.Reader, location *time.Location) ([]Programme, error) {
 }
 
 func WeekURL(year, week int) string {
-	return fmt.Sprintf("%s/%04d-%02d.xml", baseURL, year, week)
+	return WeekURLFor("m6", year, week)
+}
+
+// WeekURLFor returns the official M6 PRO XML grid URL for a supported channel.
+func WeekURLFor(channel string, year, week int) string {
+	channel = strings.ToLower(strings.TrimSpace(channel))
+	if channel != "m6" && channel != "w9" {
+		return ""
+	}
+	return fmt.Sprintf("%s/%s/grille/%04d-%02d.xml", baseURL, channel, year, week)
 }
 
 func FetchWeek(ctx context.Context, client *http.Client, location *time.Location, year, week int) ([]Programme, error) {
+	return FetchWeekFor(ctx, client, location, "m6", year, week)
+}
+
+func FetchWeekFor(ctx context.Context, client *http.Client, location *time.Location, channel string, year, week int) ([]Programme, error) {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, WeekURL(year, week), nil)
+	url := WeekURLFor(channel, year, week)
+	if url == "" {
+		return nil, fmt.Errorf("unsupported M6 PRO channel %q", channel)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch M6 PRO week %04d-%02d: %w", year, week, err)
+		return nil, fmt.Errorf("fetch %s PRO week %04d-%02d: %w", channel, year, week, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch M6 PRO week %04d-%02d: HTTP %s", year, week, resp.Status)
+		return nil, fmt.Errorf("fetch %s PRO week %04d-%02d: HTTP %s", channel, year, week, resp.Status)
 	}
 	return Parse(resp.Body, location)
 }
