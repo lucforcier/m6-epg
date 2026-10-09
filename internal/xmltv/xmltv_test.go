@@ -106,14 +106,10 @@ func TestWriteIncludesBothChannelsAndDoesNotCrossChannelStop(t *testing.T) {
 	if !strings.Contains(text, `<channel id="m6.fr">`) || !strings.Contains(text, `<channel id="w9.fr">`) {
 		t.Fatalf("guide missing M6 or W9 channel declarations: %s", text)
 	}
-	if !strings.Contains(text, `stop="20261010210000 +0000" channel="m6.fr"`) &&
-		!strings.Contains(text, `channel="m6.fr"`) {
-		t.Fatalf("guide missing M6 programmes: %s", text)
-	}
-	if !strings.Contains(text, `stop="20261010210000 +0000"`) {
+	if !strings.Contains(text, `stop="20261010210000 +0000" channel="m6.fr"`) {
 		t.Fatalf("M6 first programme should stop at the next M6 programme: %s", text)
 	}
-	if !strings.Contains(text, `stop="20261010220000 +0000"`) {
+	if !strings.Contains(text, `stop="20261010220000 +0000" channel="w9.fr"`) {
 		t.Fatalf("W9 programme should stop at the guide boundary, not the M6 start: %s", text)
 	}
 }
