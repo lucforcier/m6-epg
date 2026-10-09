@@ -71,3 +71,53 @@ func TestW9WeekStorageIsSeparateFromM6(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if !hasM6 || !hasW9 { t.Fatalf("week presence M6=%v W9=%v", hasM6, hasW9) }
 }
+
+func TestReplaceWeekReplacesLateFridayProgramInLocalTimezone(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "m6.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	location, err := time.LoadLocation("America/Toronto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Friday 23:30 in Toronto is already Saturday in UTC. It must still
+	// belong to the source week ending at Saturday local midnight.
+	start := time.Date(2026, 10, 30, 23, 30, 0, 0, location)
+	oldM6 := m6pro.Programme{ProgramID: "P1", BroadcastID: "B1", Start: start, Title: "Old M6"}
+	newM6 := oldM6
+	newM6.Title = "Updated M6"
+	oldW9 := m6pro.Programme{ProgramID: "P2", BroadcastID: "B2", Start: start, Title: "Old W9"}
+	newW9 := oldW9
+	newW9.Title = "Updated W9"
+
+	if err := s.ReplaceWeek(2026, 44, []m6pro.Programme{oldM6}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReplaceW9Week(2026, 44, []m6pro.Programme{oldW9}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReplaceWeek(2026, 44, []m6pro.Programme{newM6}); err != nil {
+		t.Fatalf("replace M6 week with late-Friday programme: %v", err)
+	}
+	if err := s.ReplaceW9Week(2026, 44, []m6pro.Programme{newW9}); err != nil {
+		t.Fatalf("replace W9 week with late-Friday programme: %v", err)
+	}
+
+	m6Rows, err := s.ProgramsBetween(start.Add(-time.Minute), start.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w9Rows, err := s.ProgramsBetweenW9(start.Add(-time.Minute), start.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m6Rows) != 1 || m6Rows[0].Title != "Updated M6" {
+		t.Fatalf("M6 rows after replacement = %#v", m6Rows)
+	}
+	if len(w9Rows) != 1 || w9Rows[0].Title != "Updated W9" {
+		t.Fatalf("W9 rows after replacement = %#v", w9Rows)
+	}
+}
