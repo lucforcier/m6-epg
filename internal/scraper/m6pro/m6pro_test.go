@@ -40,7 +40,27 @@ func TestParse(t *testing.T) {
 	if len(p.Cast) != 1 || p.Cast[0].Name != "Jean Test" || p.Cast[0].Role != "Paul" { t.Fatalf("cast not parsed: %+v", p.Cast) }
 }
 
+func TestParseW9Grid(t *testing.T) {
+	xml := `<rss><grille_programmes><chaine>W9</chaine><semaine><jours><jour><diffusions><diffusion>
+	<prid>W9P1</prid><brid>W9B1</brid><dateheure>2026-10-10 21:10</dateheure>
+	<titreprogramme>Film W9</titreprogramme><resume>Résumé W9</resume>
+	</diffusion></diffusions></jour></jours></semaine></grille_programmes></rss>`
+	got, err := Parse(strings.NewReader(xml), time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Title != "Film W9" || got[0].Start.Format("2006-01-02 15:04") != "2026-10-10 21:10" {
+		t.Fatalf("unexpected W9 programmes: %#v", got)
+	}
+}
+
 func TestWeekURL(t *testing.T) {
 	want := "https://pro.m6.fr/m6/grille/2026-42.xml"
 	if got := WeekURL(2026, 42); got != want { t.Fatalf("got %q, want %q", got, want) }
+	if got := WeekURLFor("w9", 2026, 42); got != "https://pro.m6.fr/w9/grille/2026-42.xml" {
+		t.Fatalf("W9 URL = %q", got)
+	}
+	if got := WeekURLFor("unknown", 2026, 42); got != "" {
+		t.Fatalf("unsupported channel URL = %q, want empty", got)
+	}
 }
