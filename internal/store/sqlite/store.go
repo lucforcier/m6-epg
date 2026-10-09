@@ -30,6 +30,10 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open SQLite database: %w", err)
 	}
+	// SQLite permits only one writer at a time. A single pooled connection
+	// keeps concurrent M6/W9 refreshes from racing each other for write locks;
+	// the HTTP fetches still run concurrently.
+	db.SetMaxOpenConns(1)
 	s := &Store{db: db}
 	if err := s.init(); err != nil {
 		_ = db.Close()
@@ -137,7 +141,9 @@ func (s *Store) ReplaceWeek(year, week int, programmes []m6pro.Programme) error 
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec("DELETE FROM programmes WHERE start_time >= ? AND start_time < ?", weekStart(year, week), weekStart(year, week+1)); err != nil {
+	location := weekLocation(programmes)
+	start, end := weekBounds(year, week, location), weekBounds(year, week+1, location)
+	if _, err := tx.Exec("DELETE FROM programmes WHERE start_time >= ? AND start_time < ?", start, end); err != nil {
 		return fmt.Errorf("clear week programmes: %w", err)
 	}
 
@@ -194,7 +200,9 @@ func (s *Store) ReplaceW9Week(year, week int, programmes []m6pro.Programme) erro
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec("DELETE FROM w9_programmes WHERE start_time >= ? AND start_time < ?", weekStart(year, week), weekStart(year, week+1)); err != nil {
+	location := weekLocation(programmes)
+	start, end := weekBounds(year, week, location), weekBounds(year, week+1, location)
+	if _, err := tx.Exec("DELETE FROM w9_programmes WHERE start_time >= ? AND start_time < ?", start, end); err != nil {
 		return fmt.Errorf("clear W9 week programmes: %w", err)
 	}
 
@@ -348,12 +356,27 @@ func (s *Store) LatestSourceWeek() (year, week int, ok bool, err error) {
 	return year, week, true, nil
 }
 
-func weekStart(year, week int) string {
-	return m6WeekStart(year, week).Format(time.RFC3339)
+// weekLocation returns the wall-clock timezone used to parse a source grid.
+func weekLocation(programmes []m6pro.Programme) *time.Location {
+	if len(programmes) > 0 && programmes[0].Start.Location() != nil {
+		return programmes[0].Start.Location()
+	}
+	return time.UTC
 }
 
-func m6WeekStart(year, week int) time.Time {
-	first := saturdayOnOrBefore(time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC))
+// weekBounds returns a source week's Saturday-midnight boundaries converted
+// to UTC. Grid timestamps are parsed in the source schedule location, so
+// calculating these boundaries in UTC can leave late-Friday programmes
+// outside the deletion window and cause duplicate-key failures on refresh.
+func weekBounds(year, week int, location *time.Location) string {
+	if location == nil {
+		location = time.UTC
+	}
+	return m6WeekStart(year, week, location).UTC().Format(time.RFC3339)
+}
+
+func m6WeekStart(year, week int, location *time.Location) time.Time {
+	first := saturdayOnOrBefore(time.Date(year, 1, 1, 0, 0, 0, 0, location))
 	return first.AddDate(0, 0, (week-1)*7)
 }
 
