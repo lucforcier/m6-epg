@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	_ "time/tzdata"
 )
 
 type WeekRef struct {
@@ -13,7 +14,17 @@ type WeekRef struct {
 }
 
 func WeeksForRange(start, end time.Time) []WeekRef {
-	start, end = start.UTC(), end.UTC()
+	if end.Before(start) {
+		return nil
+	}
+
+	// M6 PRO numbers weeks according to the calendar date in France. Keep
+	// the Paris date components; m6WeekStart normalizes those components to
+	// UTC after extracting the date, so converting to UTC here would shift
+	// Friday evening in North America back into the previous source week.
+	if paris, err := time.LoadLocation("Europe/Paris"); err == nil {
+		start, end = start.In(paris), end.In(paris)
+	}
 	if end.Before(start) {
 		return nil
 	}

@@ -12,6 +12,16 @@ import (
 
 const baseURL = "https://pro.m6.fr"
 
+// HTTPStatusError reports a non-success HTTP response from an M6 PRO source.
+type HTTPStatusError struct {
+	Code int
+	Status string
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("HTTP %s", e.Status)
+}
+
 type Programme struct {
 	ProgramID, BroadcastID string
 	Start time.Time
@@ -193,7 +203,7 @@ func FetchWeekFor(ctx context.Context, client *http.Client, location *time.Locat
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch %s PRO week %04d-%02d: HTTP %s", channel, year, week, resp.Status)
+		return nil, fmt.Errorf("fetch %s PRO week %04d-%02d: %w", channel, year, week, &HTTPStatusError{Code: resp.StatusCode, Status: resp.Status})
 	}
 	return Parse(resp.Body, location)
 }

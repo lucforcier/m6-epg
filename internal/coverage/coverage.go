@@ -2,7 +2,9 @@ package coverage
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -106,6 +108,10 @@ func ensureW9Coverage(
 		}
 		programmes, err := fetch(ctx, client, location, ref.Year, ref.Number)
 		if err != nil {
+			if isUnpublishedFutureWeek(err, ref, now) {
+				log.Printf("m6-epg: W9 source week %04d-%02d is not published yet; retaining stored data and retrying on next refresh", ref.Year, ref.Number)
+				continue
+			}
 			return fmt.Errorf("fetch W9 week %04d-%02d: %w", ref.Year, ref.Number, err)
 		}
 		if err := store.ReplaceW9Week(ref.Year, ref.Number, programmes); err != nil {
@@ -155,6 +161,10 @@ func ensureCoverage(
 
 		programmes, err := fetch(ctx, client, location, ref.Year, ref.Number)
 		if err != nil {
+			if isUnpublishedFutureWeek(err, ref, now) {
+				log.Printf("m6-epg: M6 source week %04d-%02d is not published yet; retaining stored data and retrying on next refresh", ref.Year, ref.Number)
+				continue
+			}
 			return fmt.Errorf("fetch M6 week %04d-%02d: %w", ref.Year, ref.Number, err)
 		}
 		if err := store.ReplaceWeek(ref.Year, ref.Number, programmes); err != nil {
@@ -162,4 +172,21 @@ func ensureCoverage(
 		}
 	}
 	return nil
+}
+
+
+// isUnpublishedFutureWeek recognizes a 404 only when the requested source week
+// is later than the current Paris source week. Other errors, including a 404
+// for the current week, remain fatal. Skipped weeks are retried next refresh.
+func isUnpublishedFutureWeek(err error, ref m6pro.WeekRef, now time.Time) bool {
+	var statusErr *m6pro.HTTPStatusError
+	if !errors.As(err, &statusErr) || statusErr.Code != http.StatusNotFound {
+		return false
+	}
+	current := m6pro.WeeksForRange(now, now)
+	if len(current) == 0 {
+		return false
+	}
+	return ref.Year > current[0].Year ||
+		(ref.Year == current[0].Year && ref.Number > current[0].Number)
 }

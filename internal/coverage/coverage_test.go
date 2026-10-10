@@ -141,3 +141,80 @@ func TestEnsureW9CoverageUsesIndependentW9Cache(t *testing.T) {
 		t.Fatalf("M6 rows=%d W9 rows=%d, want 0 and 3", len(m6Rows), len(w9Rows))
 	}
 }
+
+
+func TestEnsureCoverageSkipsUnpublishedFutureWeekAndRetriesLater(t *testing.T) {
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "m6.db"))
+	if err != nil { t.Fatal(err) }
+	defer store.Close()
+
+	// Saturday morning in Toronto is already Saturday in Paris, source week 42.
+	toronto, err := time.LoadLocation("America/Toronto")
+	if err != nil { t.Fatal(err) }
+	now := time.Date(2026, 10, 10, 11, 32, 0, 0, toronto)
+	seed := []m6pro.Programme{{ProgramID:"stored-44", BroadcastID:"b", Start:time.Date(2026,10,30,12,0,0,0,toronto), Title:"stored future data"}}
+	if err := store.ReplaceWeek(2026, 44, seed); err != nil { t.Fatal(err) }
+
+	var fetched []m6pro.WeekRef
+	fetch := func(ctx context.Context, client *http.Client, location *time.Location, year, week int) ([]m6pro.Programme, error) {
+		ref := m6pro.WeekRef{Year:year, Number:week}
+		fetched = append(fetched, ref)
+		if week == 45 {
+			return nil, &m6pro.HTTPStatusError{Code:http.StatusNotFound, Status:"404 Not Found"}
+		}
+		return []m6pro.Programme{{ProgramID:fmt.Sprintf("m6-%d",week), BroadcastID:"b", Start:time.Date(2026,10,10+7*(week-42),12,0,0,0,toronto), Title:"fresh"}}, nil
+	}
+	if err := EnsureCoverage(context.Background(), store, nil, toronto, now, 21*24*time.Hour, fetch); err != nil {
+		t.Fatalf("future 404 should not fail coverage: %v", err)
+	}
+	if len(fetched) != 3 || fetched[0].Number != 42 || fetched[1].Number != 43 || fetched[2].Number != 45 {
+		t.Fatalf("fetched weeks = %#v, want 42, 43, 45 (week 44 already cached)", fetched)
+	}
+	present, err := store.HasWeek(2026,45)
+	if err != nil { t.Fatal(err) }
+	if present { t.Fatal("week 45 should not be marked fetched after HTTP 404") }
+	rows, err := store.ProgramsBetween(time.Date(2026,10,30,0,0,0,0,toronto), time.Date(2026,10,31,0,0,0,0,toronto))
+	if err != nil { t.Fatal(err) }
+	found := false
+	for _, row := range rows { if row.Title == "stored future data" { found = true } }
+	if !found { t.Fatal("stored programmes were not retained after future-week 404") }
+}
+
+func TestEnsureCoverageDoesNotIgnoreCurrentWeek404(t *testing.T) {
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "m6.db"))
+	if err != nil { t.Fatal(err) }
+	defer store.Close()
+	now := time.Date(2026, 10, 10, 11, 32, 0, 0, time.UTC)
+	fetch := func(ctx context.Context, client *http.Client, location *time.Location, year, week int) ([]m6pro.Programme, error) {
+		return nil, &m6pro.HTTPStatusError{Code:http.StatusNotFound, Status:"404 Not Found"}
+	}
+	if err := EnsureCoverage(context.Background(), store, nil, time.UTC, now, 0, fetch); err == nil {
+		t.Fatal("current-week 404 must remain an error")
+	}
+}
+
+func TestEnsureW9CoverageSkipsUnpublishedFutureWeek(t *testing.T) {
+	store, err := sqlite.Open(filepath.Join(t.TempDir(), "m6.db"))
+	if err != nil { t.Fatal(err) }
+	defer store.Close()
+	toronto, err := time.LoadLocation("America/Toronto")
+	if err != nil { t.Fatal(err) }
+	now := time.Date(2026, 10, 10, 11, 32, 0, 0, toronto)
+	seed := []m6pro.Programme{{ProgramID:"w9-stored", BroadcastID:"b", Start:time.Date(2026,10,30,12,0,0,0,toronto), Title:"stored W9 data"}}
+	if err := store.ReplaceW9Week(2026,44,seed); err != nil { t.Fatal(err) }
+	fetch := func(ctx context.Context, client *http.Client, location *time.Location, year, week int) ([]m6pro.Programme, error) {
+		if week == 45 { return nil, &m6pro.HTTPStatusError{Code:http.StatusNotFound, Status:"404 Not Found"} }
+		return []m6pro.Programme{{ProgramID:fmt.Sprintf("w9-%d",week), BroadcastID:"b", Start:now.Add(time.Duration(week-42)*24*time.Hour), Title:"fresh W9"}}, nil
+	}
+	if err := EnsureW9Coverage(context.Background(), store, nil, toronto, now, 21*24*time.Hour, fetch); err != nil {
+		t.Fatalf("future W9 404 should not fail coverage: %v", err)
+	}
+	present, err := store.HasW9Week(2026,45)
+	if err != nil { t.Fatal(err) }
+	if present { t.Fatal("W9 week 45 should not be marked fetched after HTTP 404") }
+	rows, err := store.ProgramsBetweenW9(time.Date(2026,10,30,0,0,0,0,toronto), time.Date(2026,10,31,0,0,0,0,toronto))
+	if err != nil { t.Fatal(err) }
+	found := false
+	for _, row := range rows { if row.Title == "stored W9 data" { found = true } }
+	if !found { t.Fatal("stored W9 programmes were not retained after future-week 404") }
+}
