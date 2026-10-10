@@ -19,7 +19,7 @@ type HTTPStatusError struct {
 }
 
 func (e *HTTPStatusError) Error() string {
-	return fmt.Sprintf("HTTP %d %s", e.Code, e.Status)
+	return fmt.Sprintf("HTTP %s", e.Status)
 }
 
 type Programme struct {
